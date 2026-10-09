@@ -27,7 +27,11 @@ import {
   Eye,
   EyeOff,
   ShieldCheck,
-  Loader2
+  Loader2,
+  Network,
+  Plug,
+  Github,
+  ExternalLink
 } from 'lucide-react';
 
 interface AgentSettingsModalProps {

@@ -48,6 +48,7 @@ model Agent {
   deploymentConfig     AgentDeploymentConfig?
   webhooks             AgentWebhook[]
   securityConfig       AgentSecurityConfig?
+  mcpConfig            AgentMCPConfig?
   executions           AgentExecution[]
   conversations        Conversation[]
   auditLogs            AuditLog[]
@@ -217,6 +218,25 @@ model AgentSecurityConfig {
   allowedDirectories   String  @default("./src, ./tests, ./public")
   executionSandbox     Boolean @default(true)
   auditLoggingEnabled  Boolean @default(true)
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+}
+
+model AgentMCPConfig {
+  id              String    @id @default(uuid())
+  agentId         String    @unique
+  name            String    @default("GitHub MCP Server")
+  serverType      String    @default("github") // github, custom
+  authMethod      String    @default("pat") // pat, oauth
+  serverUrl       String?   @default("npx -y @modelcontextprotocol/server-github")
+  apiKey          String?
+  status          String    @default("not_connected") // not_connected, connecting, connected, error
+  scopes          String?   @default("repo,read:user")
+  discoveredTools String?   // JSON string of discovered MCP tools
+  errorMessage    String?
+  lastConnectedAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
 }

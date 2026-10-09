@@ -61,6 +61,7 @@ export interface Agent {
   deploymentConfig?: AgentDeploymentConfig | null;
   webhooks?: AgentWebhook[];
   securityConfig?: AgentSecurityConfig | null;
+  mcpConfig?: AgentMCPConfig | null;
   executionsCount?: number;
 }
 
@@ -317,6 +318,24 @@ export interface Message {
   createdAt: string;
 }
 
+export type MCPConnectionStatus = 'not_connected' | 'connecting' | 'connected' | 'error';
+
+export interface AgentMCPConfig {
+  id?: string;
+  agentId?: string;
+  name: string;
+  serverType: 'github' | 'custom';
+  authMethod: 'pat' | 'oauth';
+  serverUrl?: string;
+  apiKey?: string;
+  apiKeyMasked?: string;
+  status: MCPConnectionStatus;
+  scopes?: string;
+  discoveredTools?: string;
+  errorMessage?: string | null;
+  lastConnectedAt?: string | null;
+}
+
 // API Payloads
 export interface CreateAgentDTO {
   name: string;
@@ -338,6 +357,7 @@ export interface CreateAgentDTO {
   deploymentConfig?: Partial<AgentDeploymentConfig>;
   webhooks?: Partial<AgentWebhook>[];
   securityConfig?: Partial<AgentSecurityConfig>;
+  mcpConfig?: Partial<AgentMCPConfig>;
 }
 
 export type UpdateAgentDTO = Partial<CreateAgentDTO>;

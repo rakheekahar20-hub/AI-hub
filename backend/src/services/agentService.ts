@@ -60,6 +60,14 @@ export class AgentService {
       });
     }
 
+    if (sanitized.mcpConfig) {
+      sanitized.mcpConfig = {
+        ...sanitized.mcpConfig,
+        apiKeyMasked: this.maskSecret(sanitized.mcpConfig.apiKey),
+        apiKey: undefined
+      };
+    }
+
     return sanitized;
   }
 
@@ -78,6 +86,7 @@ export class AgentService {
         deploymentConfig: true,
         webhooks: true,
         securityConfig: true,
+        mcpConfig: true,
         _count: {
           select: { executions: true }
         }
@@ -107,6 +116,7 @@ export class AgentService {
         deploymentConfig: true,
         webhooks: true,
         securityConfig: true,
+        mcpConfig: true,
         _count: {
           select: { executions: true }
         }
@@ -480,6 +490,34 @@ export class AgentService {
         },
         update: {
           ...data.securityConfig
+        }
+      });
+    }
+
+    // Update MCP Config
+    if (data.mcpConfig) {
+      await prisma.agentMCPConfig.upsert({
+        where: { agentId },
+        create: {
+          agentId,
+          name: data.mcpConfig.name || 'GitHub MCP Server',
+          serverType: data.mcpConfig.serverType || 'github',
+          authMethod: data.mcpConfig.authMethod || 'pat',
+          serverUrl: data.mcpConfig.serverUrl || 'npx -y @modelcontextprotocol/server-github',
+          apiKey: (data.mcpConfig as any).apiKey || null,
+          status: data.mcpConfig.status || 'not_connected',
+          scopes: data.mcpConfig.scopes || 'repo,read:user',
+          discoveredTools: data.mcpConfig.discoveredTools || null
+        },
+        update: {
+          name: data.mcpConfig.name ?? undefined,
+          serverType: data.mcpConfig.serverType ?? undefined,
+          authMethod: data.mcpConfig.authMethod ?? undefined,
+          serverUrl: data.mcpConfig.serverUrl ?? undefined,
+          apiKey: (data.mcpConfig as any).apiKey !== undefined ? (data.mcpConfig as any).apiKey : undefined,
+          status: data.mcpConfig.status ?? undefined,
+          scopes: data.mcpConfig.scopes ?? undefined,
+          discoveredTools: data.mcpConfig.discoveredTools ?? undefined
         }
       });
     }

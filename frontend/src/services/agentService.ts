@@ -66,6 +66,37 @@ export const agentService = {
   async getAgentExecutions(agentId: string): Promise<AgentExecution[]> {
     const res = await apiRequest<{ executions: AgentExecution[] }>(`/agents/${agentId}/executions`);
     return res.executions;
+  },
+
+  async getGitHubMCPStatus(agentId: string): Promise<any> {
+    return apiRequest(`/agents/${agentId}/mcp/github`);
+  },
+
+  async connectGitHubMCP(agentId: string, data: { serverUrl?: string; authMethod: string; apiKey: string; scopes?: string }): Promise<any> {
+    return apiRequest(`/agents/${agentId}/mcp/github/connect`, {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  },
+
+  async testGitHubMCPConnection(data: { serverUrl?: string; authMethod: string; apiKey: string; scopes?: string }, agentId?: string): Promise<any> {
+    const endpoint = agentId ? `/agents/${agentId}/mcp/github/test` : '/agents/mcp/github/test';
+    return apiRequest(endpoint, {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  },
+
+  async disconnectGitHubMCP(agentId: string): Promise<any> {
+    return apiRequest(`/agents/${agentId}/mcp/github/disconnect`, {
+      method: 'POST'
+    });
+  },
+
+  async reconnectGitHubMCP(agentId: string): Promise<any> {
+    return apiRequest(`/agents/${agentId}/mcp/github/reconnect`, {
+      method: 'POST'
+    });
   }
 };
 
