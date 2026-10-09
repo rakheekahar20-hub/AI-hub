@@ -8,10 +8,10 @@
     "strict": true,
     "skipLibCheck": true,
     "outDir": "./dist",
+    "rootDir": ".",
     "resolveJsonModule": true,
     "declaration": true
   },
-  "include": ["src/**/*", "../shared/**/*"],
+  "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
 }
-

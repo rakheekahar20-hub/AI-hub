@@ -8,3 +8,4 @@ build
 *.sqlite-journal
 backend/prisma/*.db
 backend/prisma/*.db-journal
+*.tsbuildinfo

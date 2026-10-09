@@ -1,5 +1,5 @@
 import { prisma } from '../database/db.js';
-import { CreateAgentDTO, UpdateAgentDTO } from '../../../shared/types/index.js';
+import type { CreateAgentDTO, UpdateAgentDTO } from '../types/shared.js';
 import { auditService } from './auditService.js';
 
 export class AgentService {

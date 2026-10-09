@@ -2,11 +2,11 @@
   "name": "ai-hub-backend",
   "version": "1.0.0",
   "description": "Production-style AI Agent Development Platform Backend",
-  "main": "dist/backend/src/index.js",
+  "main": "dist/src/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
-    "start": "node dist/backend/src/index.js",
+    "start": "node dist/src/index.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma db push",
     "prisma:seed": "tsx src/database/seed.ts"
