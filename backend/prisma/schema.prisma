@@ -1,0 +1,328 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String         @id @default(uuid())
+  email        String         @unique
+  name         String
+  passwordHash String?
+  avatarUrl    String?
+  role         String         @default("developer") // admin, developer, viewer
+  provider     String         @default("demo") // demo, firebase, google, microsoft
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  agents        Agent[]
+  conversations Conversation[]
+  auditLogs     AuditLog[]
+}
+
+model Agent {
+  id          String   @id @default(uuid())
+  userId      String
+  name        String
+  description String
+  agentType   String   @default("Full Stack Developer")
+  icon        String   @default("bot")
+  environment String   @default("development") // development, staging, production
+  status      String   @default("IDLE") // ONLINE, OFFLINE, IDLE, EXECUTING, ERROR
+  isDemo      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user                 User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  repository           AgentRepository?
+  servers              AgentServer[]
+  aiConfig             AgentAIConfig?
+  instruction          AgentInstruction?
+  environmentVariables AgentEnvironmentVariable[]
+  permission           AgentPermission?
+  executionConfig      AgentExecutionConfig?
+  testingConfig        AgentTestingConfig?
+  deploymentConfig     AgentDeploymentConfig?
+  webhooks             AgentWebhook[]
+  securityConfig       AgentSecurityConfig?
+  executions           AgentExecution[]
+  conversations        Conversation[]
+  auditLogs            AuditLog[]
+}
+
+model AgentRepository {
+  id              String    @id @default(uuid())
+  agentId         String    @unique
+  provider        String    @default("github") // github, gitlab, bitbucket, custom
+  repositoryUrl   String    @default("")
+  repositoryOwner String    @default("")
+  repositoryName  String    @default("")
+  branch          String    @default("main")
+  authMethod      String    @default("token") // token, ssh_key, demo
+  gitToken        String?
+  sshKey          String?
+  lastSyncAt      DateTime?
+  lastCommitHash  String?
+  status          String    @default("not_configured") // connected, disconnected, error, not_configured
+  errorMessage    String?
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+}
+
+model AgentServer {
+  id              String    @id @default(uuid())
+  agentId         String
+  serverName      String
+  environment     String    @default("development") // development, staging, production
+  serverType      String    @default("ssh") // ssh, sftp, ftp, docker, api
+  host            String    @default("")
+  port            Int       @default(22)
+  username        String    @default("")
+  authMethod      String    @default("password") // password, ssh_key, api_token
+  password        String?
+  privateKey      String?
+  remoteDirectory String    @default("/var/www/app")
+  status          String    @default("not_configured") // connected, disconnected, error, not_configured
+  lastCheckedAt   DateTime?
+  errorMessage    String?
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+}
+
+model AgentAIConfig {
+  id            String  @id @default(uuid())
+  agentId       String  @unique
+  provider      String  @default("gemini") // openai, gemini, anthropic
+  model         String  @default("gemini-1.5-pro")
+  temperature   Float   @default(0.2)
+  maxTokens     Int     @default(4096)
+  fallbackModel String?
+  apiKey        String?
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+}
+
+model AgentInstruction {
+  id                 String @id @default(uuid())
+  agentId            String @unique
+  systemInstructions String @default("You are an autonomous AI coding agent designed to analyze codebases, plan changes, edit files, and run tests.")
+  projectKnowledge   String @default("")
+  technologyStack    String @default("TypeScript, Node.js, React")
+  businessRules      String @default("")
+  codingStandards    String @default("Clean code, strict types, comprehensive error handling")
+  architectureRules  String @default("Modular, decoupled services")
+  doNotModifyRules   String @default(".env*, package-lock.json, migrations")
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+}
+
+model AgentEnvironmentVariable {
+  id          String  @id @default(uuid())
+  agentId     String
+  key         String
+  value       String
+  isSecret    Boolean @default(true)
+  environment String  @default("development") // development, staging, production
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+}
+
+model AgentPermission {
+  id                  String  @id @default(uuid())
+  agentId             String  @unique
+  repoRead            Boolean @default(true)
+  repoWrite           Boolean @default(true)
+  fileRead            Boolean @default(true)
+  fileWrite           Boolean @default(true)
+  git                 Boolean @default(true)
+  terminal            Boolean @default(true)
+  installDependencies Boolean @default(true)
+  runTests            Boolean @default(true)
+  runBuild            Boolean @default(true)
+  runLint             Boolean @default(true)
+  runTypecheck        Boolean @default(true)
+  database            Boolean @default(false)
+  browser             Boolean @default(false)
+  api                 Boolean @default(true)
+  deployment          Boolean @default(false)
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+}
+
+model AgentExecutionConfig {
+  id                              String  @id @default(uuid())
+  agentId                         String  @unique
+  mode                            String  @default("assisted") // manual, assisted, autonomous
+  requireApprovalBeforeChanges    Boolean @default(true)
+  requireApprovalBeforeCommit     Boolean @default(true)
+  requireApprovalBeforePush       Boolean @default(true)
+  requireApprovalBeforeDeployment Boolean @default(true)
+  executionTimeoutMinutes         Int     @default(15)
+  retryCount                      Int     @default(2)
+  autoFixFailedTests              Boolean @default(true)
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+}
+
+model AgentTestingConfig {
+  id               String @id @default(uuid())
+  agentId          String @unique
+  installCommand   String @default("npm install")
+  testCommand      String @default("npm test")
+  buildCommand     String @default("npm run build")
+  lintCommand      String @default("npm run lint")
+  typecheckCommand String @default("npm run typecheck")
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+}
+
+model AgentDeploymentConfig {
+  id                    String    @id @default(uuid())
+  agentId               String    @unique
+  provider              String    @default("docker") // docker, vercel, kubernetes, custom_script
+  deploymentCommand     String    @default("docker-compose up -d --build")
+  preDeploymentCommand  String?   @default("npm run build")
+  postDeploymentCommand String?
+  healthCheckUrl        String?   @default("http://localhost:3000/health")
+  rollbackCommand       String?   @default("docker-compose down && docker-compose up -d")
+  strategy              String    @default("approval_required") // manual, automatic, approval_required
+  status                String    @default("not_configured")
+  lastDeployedAt        DateTime?
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+}
+
+model AgentWebhook {
+  id          String   @id @default(uuid())
+  agentId     String
+  webhookType String   @default("repository") // repository, deployment, agent_event
+  url         String
+  secret      String?
+  events      String   @default("push,workflow_run")
+  isActive    Boolean  @default(true)
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+}
+
+model AgentSecurityConfig {
+  id                   String  @id @default(uuid())
+  agentId              String  @unique
+  credentialStorage    String  @default("encrypted_vault") // encrypted_vault, environment, database
+  secretMaskingEnabled Boolean @default(true)
+  allowedCommands      String  @default("npm, git, node, npx, yarn, pnpm")
+  blockedCommands      String  @default("rm -rf /, shutdown, mkfs, dd")
+  allowedDirectories   String  @default("./src, ./tests, ./public")
+  executionSandbox     Boolean @default(true)
+  auditLoggingEnabled  Boolean @default(true)
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+}
+
+model AgentExecution {
+  id                 String    @id @default(uuid())
+  agentId            String
+  prompt             String
+  status             String    @default("QUEUED") // QUEUED, RUNNING, WAITING_FOR_APPROVAL, COMPLETED, FAILED, CANCELLED
+  startedAt          DateTime  @default(now())
+  completedAt        DateTime?
+  isDemo             Boolean   @default(false)
+  commitHash         String?
+  commitMessage      String?
+  pushedBranch       String?
+  testOutput         String?
+  buildOutput        String?
+  lintOutput         String?
+  typecheckOutput    String?
+  deploymentOutput   String?
+  healthCheckStatus  String?   @default("not_configured") // healthy, unhealthy, unreachable, not_configured
+  errorMessage       String?
+
+  agent        Agent             @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  steps        ExecutionStep[]
+  fileChanges  AgentFileChange[]
+  logs         AgentExecutionLog[]
+}
+
+model ExecutionStep {
+  id          String    @id @default(uuid())
+  executionId String
+  stepNumber  Int
+  title       String
+  description String
+  status      String    @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED, FAILED, SKIPPED, WAITING_APPROVAL
+  startedAt   DateTime?
+  completedAt DateTime?
+  output      String?
+
+  execution AgentExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+}
+
+model AgentFileChange {
+  id              String  @id @default(uuid())
+  executionId     String
+  filePath        String
+  changeType      String  @default("modified") // modified, added, deleted
+  additions       Int     @default(0)
+  deletions       Int     @default(0)
+  diff            String  @default("")
+  originalContent String?
+  modifiedContent String?
+  approvalStatus  String  @default("PENDING") // PENDING, APPROVED, REJECTED
+  rejectedReason  String?
+
+  execution AgentExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+}
+
+model AgentExecutionLog {
+  id          String   @id @default(uuid())
+  executionId String
+  timestamp   DateTime @default(now())
+  level       String   @default("info") // info, warn, error, success, debug
+  stepName    String
+  message     String
+  details     String?
+
+  execution AgentExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+}
+
+model Conversation {
+  id        String    @id @default(uuid())
+  agentId   String
+  userId    String
+  title     String    @default("New Conversation")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  agent    Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages Message[]
+}
+
+model Message {
+  id             String   @id @default(uuid())
+  conversationId String
+  sender         String   // user, agent, system
+  content        String
+  executionId    String?
+  createdAt      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  agentId   String?
+  action    String
+  resource  String
+  details   String
+  ipAddress String?
+  timestamp DateTime @default(now())
+
+  user  User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+  agent Agent? @relation(fields: [agentId], references: [id], onDelete: SetNull)
+}
+

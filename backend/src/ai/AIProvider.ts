@@ -1,0 +1,58 @@
+export interface PlanStepItem {
+  stepNumber: number;
+  title: string;
+  description: string;
+  filesToModify?: string[];
+  commandToRun?: string;
+}
+
+export interface GeneratedPlan {
+  summary: string;
+  steps: PlanStepItem[];
+  riskAssessment: 'low' | 'medium' | 'high';
+  estimatedFilesCount: number;
+}
+
+export interface GeneratedFileChange {
+  filePath: string;
+  changeType: 'modified' | 'added' | 'deleted';
+  diff: string;
+  originalContent?: string;
+  modifiedContent?: string;
+  additions: number;
+  deletions: number;
+}
+
+export interface AttachedImageContext {
+  dataUrl?: string;
+  mimeType?: string;
+  base64?: string;
+  name?: string;
+}
+
+export interface AIProviderContext {
+  prompt: string;
+  systemInstructions: string;
+  projectKnowledge?: string;
+  technologyStack?: string;
+  businessRules?: string;
+  codingStandards?: string;
+  architectureRules?: string;
+  doNotModifyRules?: string;
+  repositoryContext?: {
+    owner: string;
+    name: string;
+    branch: string;
+    files?: string[];
+  };
+  image?: AttachedImageContext;
+}
+
+export interface AIProvider {
+  name: string;
+  generatePlan(context: AIProviderContext): Promise<GeneratedPlan>;
+  generateCodeChanges(context: AIProviderContext, plan: GeneratedPlan): Promise<GeneratedFileChange[]>;
+  chat(message: string, history: Array<{ sender: string; content: string }>, context: AIProviderContext): Promise<string>;
+  chatStream?(message: string, history: Array<{ sender: string; content: string }>, context: AIProviderContext, onChunk: (token: string) => void): Promise<string>;
+}
+

@@ -1,0 +1,42 @@
+import { Router } from 'express';
+import {
+  getAgents,
+  getAgentById,
+  createAgent,
+  updateAgent,
+  deleteAgent,
+  duplicateAgent,
+  testRepository,
+  syncRepository,
+  testServer,
+  getAgentExecutions
+} from '../controllers/agentController.js';
+import { executeAgent } from '../controllers/executionController.js';
+import { authenticate } from '../middleware/auth.js';
+
+const router = Router();
+
+router.use(authenticate);
+
+router.get('/', getAgents);
+router.post('/', createAgent);
+router.get('/:id', getAgentById);
+router.put('/:id', updateAgent);
+router.delete('/:id', deleteAgent);
+router.post('/:id/duplicate', duplicateAgent);
+
+// Repo operations
+router.post('/:id/repository/test', testRepository);
+router.post('/repository/test', testRepository);
+router.post('/:id/repository/sync', syncRepository);
+
+// Server operations
+router.post('/:id/servers/test', testServer);
+router.post('/servers/test', testServer);
+
+// Executions for this agent
+router.post('/:id/execute', executeAgent);
+router.get('/:id/executions', getAgentExecutions);
+
+export default router;
+
