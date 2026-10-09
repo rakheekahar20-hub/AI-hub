@@ -58,17 +58,26 @@ export class DeploymentService {
 
     if (!deployRes.success) {
       combinedOutput += `Deployment error: ${deployRes.stderr}\n`;
-      if (config.rollbackCommand) {
+      
+      const primaryBin = config.deploymentCommand.trim().split(/\s+/)[0];
+      const isCmdNotFound = deployRes.exitCode === 127 || deployRes.stderr.includes('not found');
+
+      // Only attempt rollback if failure was not a missing binary (avoids triggering secondary not-found errors)
+      if (config.rollbackCommand && !isCmdNotFound) {
         combinedOutput += `> Triggering Rollback: ${config.rollbackCommand}\n`;
         const rollbackRes = await TerminalExecutionService.execute(config.rollbackCommand, { cwd });
         combinedOutput += rollbackRes.stdout || rollbackRes.stderr;
       }
 
+      const errorMessage = isCmdNotFound
+        ? `Deployment tool '${primaryBin}' is not installed on this system (exit code 127: ${deployRes.stderr.trim()}). Please install '${primaryBin}' or configure your custom deployment command in Agent Settings > Deployment.`
+        : `Deployment failed with exit code ${deployRes.exitCode}: ${deployRes.stderr}`;
+
       return {
         success: false,
         deploymentOutput: combinedOutput,
         healthCheckStatus: 'unhealthy',
-        message: `Deployment failed with exit code ${deployRes.exitCode}: ${deployRes.stderr}`,
+        message: errorMessage,
         error: deployRes.stderr
       };
     }
