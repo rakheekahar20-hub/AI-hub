@@ -43,7 +43,25 @@ export interface AIProviderContext {
     owner: string;
     name: string;
     branch: string;
+    status?: string;
+    provider?: string;
     files?: string[];
+  };
+  mcpContext?: {
+    name?: string;
+    serverType?: string;
+    authMethod?: string;
+    status?: string;
+    scopes?: string;
+    hasDiscoveredTools?: boolean;
+    toolCount?: number;
+    lastConnectedAt?: Date | null;
+  };
+  deploymentContext?: {
+    strategy?: string;
+    status?: string;
+    healthCheckUrl?: string | null;
+    lastDeployedAt?: Date | null;
   };
   image?: AttachedImageContext;
 }

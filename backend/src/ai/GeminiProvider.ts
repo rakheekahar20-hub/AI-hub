@@ -220,7 +220,10 @@ export class GeminiProvider implements AIProvider {
           context.systemInstructions || 'You are an expert AI software engineer assistant.',
           context.technologyStack ? `Technology Stack: ${context.technologyStack}` : '',
           context.codingStandards ? `Coding Standards: ${context.codingStandards}` : '',
-          context.architectureRules ? `Architecture Rules: ${context.architectureRules}` : ''
+          context.architectureRules ? `Architecture Rules: ${context.architectureRules}` : '',
+          context.repositoryContext ? `Connected Repository: ${context.repositoryContext.owner}/${context.repositoryContext.name} on branch ${context.repositoryContext.branch} (Status: ${context.repositoryContext.status || 'connected'})` : '',
+          context.mcpContext ? `GitHub MCP Server: ${context.mcpContext.name} (${context.mcpContext.status === 'connected' ? 'Connected and authenticated with GitHub' : context.mcpContext.status})` : '',
+          context.deploymentContext ? `Deployment Strategy: ${context.deploymentContext.strategy} (Status: ${context.deploymentContext.status})` : ''
         ].filter(Boolean).join('\n\n');
 
         const contents = formatGeminiContents(history, message, context.image);
@@ -267,7 +270,8 @@ export class GeminiProvider implements AIProvider {
       }
     }
 
-    return `⚠️ **Gemini API Error**: ${lastError || 'All Gemini models unavailable'}\n\nFalling back to offline assistant:\n\n${await this.fallback.chat(message, history, context)}`;
+    console.warn(`Gemini chat unavailable (${lastError}), falling back to assistant response.`);
+    return await this.fallback.chat(message, history, context);
   }
 
   async chatStream(
@@ -289,7 +293,11 @@ export class GeminiProvider implements AIProvider {
         const systemPrompt = [
           context.systemInstructions || 'You are an expert AI software engineer assistant.',
           context.technologyStack ? `Technology Stack: ${context.technologyStack}` : '',
-          context.codingStandards ? `Coding Standards: ${context.codingStandards}` : ''
+          context.codingStandards ? `Coding Standards: ${context.codingStandards}` : '',
+          context.architectureRules ? `Architecture Rules: ${context.architectureRules}` : '',
+          context.repositoryContext ? `Connected Repository: ${context.repositoryContext.owner}/${context.repositoryContext.name} on branch ${context.repositoryContext.branch} (Status: ${context.repositoryContext.status || 'connected'})` : '',
+          context.mcpContext ? `GitHub MCP Server: ${context.mcpContext.name} (${context.mcpContext.status === 'connected' ? 'Connected and authenticated with GitHub' : context.mcpContext.status})` : '',
+          context.deploymentContext ? `Deployment Strategy: ${context.deploymentContext.strategy} (Status: ${context.deploymentContext.status})` : ''
         ].filter(Boolean).join('\n\n');
 
         const contents = formatGeminiContents(history, message, context.image);

@@ -5,24 +5,122 @@ import { AIProviderFactory } from '../ai/AIProviderFactory.js';
 import { executionEngine } from '../execution/ExecutionEngine.js';
 
 function isDevelopmentTask(prompt: string): boolean {
-  const p = prompt.toLowerCase().trim();
-  const casualQueries = [
-    'hello', 'hi', 'hey', 'good morning', 'good evening', 'who are you',
-    'how are you', 'what is your name', 'what can you do'
+  if (!prompt || typeof prompt !== 'string') return false;
+  const p = prompt.trim();
+  const lower = p.toLowerCase();
+
+  // 1. Casual greetings & short chat
+  const casualPhrases = [
+    'hello', 'hi', 'hey', 'good morning', 'good evening', 'good afternoon',
+    'who are you', 'how are you', 'what is your name', 'what can you do',
+    'help', 'thanks', 'thank you', 'ok', 'okay', 'cool', 'nice', 'got it',
+    'ping', 'test', 'sup', 'yo'
+  ];
+  if (casualPhrases.some(phrase => lower === phrase || lower === phrase + '!' || lower === phrase + '.' || lower === phrase + '?')) {
+    return false;
+  }
+
+  // 2. Explicit question and status patterns -> ALWAYS conversational (false)
+  const statusQuestionPatterns = [
+    /^you are connect/i,
+    /^are you connect/i,
+    /^is (it|github|git|server|backend|frontend|database|mcp) connect/i,
+    /^(check|what is the) (connection|status)/i,
+    /^why\b/i,                              // "why failed deployment", "why agent not simple..."
+    /^what is\b/i,                          // "what is git", "what is mcp"
+    /^what are\b/i,
+    /^what does\b/i,
+    /^how does\b/i,
+    /^how do (i|we)\b/i,                   // "how do I configure..."
+    /^how to\b/i,                          // "how to connect..."
+    /^how can (i|we)\b/i,
+    /^who is\b/i,
+    /^where is\b/i,
+    /^where are\b/i,
+    /^can you explain\b/i,
+    /^could you explain\b/i,
+    /^explain\b/i,
+    /^describe\b/i,
+    /^tell me about\b/i,
+    /^tell me\b/i,
+    /^show me (how|an example|what)\b/i
   ];
 
-  if (casualQueries.some(q => p === q)) return false;
+  if (statusQuestionPatterns.some(pattern => pattern.test(lower))) {
+    return false;
+  }
 
-  const actionKeywords = [
-    'build', 'run', 'test', 'deploy', 'git', 'commit', 'push', 'pull',
-    'implement', 'create', 'fix', 'update', 'modify', 'code', 'install',
-    'execute', 'task', 'add', 'remove', 'generate', 'delete', 'setup',
-    'configure', 'refactor', 'lint', 'compile', 'script', 'terminal',
-    'endpoint', 'api', 'database', 'feature', 'bug', 'pipeline', 'release',
-    'patch', 'review', 'change', 'make', 'do this', 'please'
+  // 3. User feedback / non-task conversational statements
+  if (
+    lower.startsWith('i am not ') ||
+    lower.startsWith('i want ') ||
+    lower.startsWith('in this chat ') ||
+    lower.includes('simple quiestion') ||
+    lower.includes('simple question')
+  ) {
+    return false;
+  }
+
+  // 4. Questions ending with '?' that do not contain explicit commands to mutate files/run pipeline
+  if (p.endsWith('?')) {
+    const hasExplicitImperativeVerb = /\b(implement|fix|create|add|install|deploy|push|build|refactor|delete|remove)\b/i.test(lower);
+    const hasProjectTarget = /\b(code|file|component|endpoint|bug|error|repo|branch|pipeline|package|dependency|tsconfig|test)\b/i.test(lower);
+    if (!hasExplicitImperativeVerb || !hasProjectTarget) {
+      return false;
+    }
+  }
+
+  // 5. Explicit Autonomous Directives (high confidence development tasks)
+  const explicitAutonomousDirectives = [
+    'autonomous execution',
+    'act as an autonomous',
+    'implement the requested changes directly',
+    'execute the entire pipeline',
+    'stage all modified files',
+    'push directly to',
+    'deploy directly to',
+    'update existing ai agent only',
+    'add github mcp server'
+  ];
+  if (explicitAutonomousDirectives.some(d => lower.includes(d))) {
+    return true;
+  }
+
+  // 6. Actionable Development Verbs + Targets
+  const actionVerbs = [
+    'implement', 'create', 'add', 'generate', 'write',
+    'fix', 'repair', 'resolve', 'solve', 'patch',
+    'update', 'modify', 'change', 'refactor', 'replace',
+    'delete', 'remove',
+    'install', 'uninstall',
+    'build', 'compile',
+    'deploy', 'publish',
+    'commit', 'push', 'pull', 'merge', 'cherry-pick'
   ];
 
-  return actionKeywords.some(kw => p.includes(kw));
+  const targetNouns = [
+    'endpoint', 'api', 'route', 'controller', 'service', 'model', 'schema',
+    'component', 'page', 'modal', 'button', 'navbar', 'view', 'ui',
+    'file', 'files', 'code', 'function', 'class', 'method',
+    'bug', 'bugs', 'error', 'errors', 'issue', 'issues', 'failure', 'exception',
+    'tsconfig', 'config', 'configs', 'configuration', 'configurations', 'package.json', 'dependency', 'dependencies', 'package',
+    'test', 'tests', 'unit test', 'integration test',
+    'branch', 'repo', 'repository', 'commit', 'git',
+    'deployment', 'docker', 'dockerfile', 'pipeline', 'workflow',
+    'styling', 'style', 'css', 'tailwind', 'theme', 'color', 'settings'
+  ];
+
+  const hasAction = actionVerbs.some(verb => {
+    const regex = new RegExp(`\\b${verb}\\b`, 'i');
+    return regex.test(lower);
+  });
+
+  const hasTarget = targetNouns.some(target => {
+    const regex = new RegExp(`\\b${target}\\b`, 'i');
+    return regex.test(lower);
+  });
+
+  return hasAction && hasTarget;
 }
 
 function formatExecutionReport(execution: any, prompt: string): string {
@@ -109,7 +207,8 @@ export async function handleChat(req: AuthenticatedRequest, res: Response) {
               executionConfig: true,
               testingConfig: true,
               deploymentConfig: true,
-              securityConfig: true
+              securityConfig: true,
+              mcpConfig: true
             }
           },
           messages: {
@@ -134,7 +233,8 @@ export async function handleChat(req: AuthenticatedRequest, res: Response) {
           executionConfig: true,
           testingConfig: true,
           deploymentConfig: true,
-          securityConfig: true
+          securityConfig: true,
+          mcpConfig: true
         }
       });
     }
@@ -149,7 +249,8 @@ export async function handleChat(req: AuthenticatedRequest, res: Response) {
           executionConfig: true,
           testingConfig: true,
           deploymentConfig: true,
-          securityConfig: true
+          securityConfig: true,
+          mcpConfig: true
         }
       });
     }
@@ -321,7 +422,24 @@ export async function handleChat(req: AuthenticatedRequest, res: Response) {
       repositoryContext: agent.repository ? {
         owner: agent.repository.repositoryOwner,
         name: agent.repository.repositoryName,
-        branch: agent.repository.branch
+        branch: agent.repository.branch,
+        status: agent.repository.status,
+        provider: agent.repository.provider
+      } : undefined,
+      mcpContext: agent.mcpConfig ? {
+        name: agent.mcpConfig.name,
+        serverType: agent.mcpConfig.serverType,
+        authMethod: agent.mcpConfig.authMethod,
+        status: agent.mcpConfig.status,
+        scopes: agent.mcpConfig.scopes || undefined,
+        hasDiscoveredTools: Boolean(agent.mcpConfig.discoveredTools),
+        lastConnectedAt: agent.mcpConfig.lastConnectedAt
+      } : undefined,
+      deploymentContext: agent.deploymentConfig ? {
+        strategy: agent.deploymentConfig.strategy,
+        status: agent.deploymentConfig.status,
+        healthCheckUrl: agent.deploymentConfig.healthCheckUrl,
+        lastDeployedAt: agent.deploymentConfig.lastDeployedAt
       } : undefined,
       image: attachedImage
     };

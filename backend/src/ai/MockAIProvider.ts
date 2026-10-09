@@ -131,18 +131,65 @@ export class MockAIProvider implements AIProvider {
       return `Hello! 👋 I am your AI Development Assistant.\n\nI'm ready to help you with your workspace and technology stack (**${context.technologyStack || 'TypeScript, Node.js, React'}**).\n\nYou can ask me questions, discuss design patterns, generate code snippets, or plan features.\n\n*💡 Tip: You can connect live Google Gemini or OpenAI by adding \`GEMINI_API_KEY\` or \`OPENAI_API_KEY\` to \`backend/.env\` or in Agent Settings.* What are you building today?`;
     }
 
-    // 2. Capabilities
-    if (lower.includes('who are you') || lower.includes('what can you do') || lower.includes('help')) {
-      return `I am an AI Coding Agent in **AI Hub**.\n\nHere is what I can help you with:\n1. 💬 **Interactive Chat**: Answer coding questions, explain architectural concepts, and plan implementations.\n2. 🛠️ **Code Implementation**: Write components, backend services, API endpoints, and database models.\n3. 🔍 **Repository Guidance**: Review changes, Git branches, and repository architecture.\n4. 🚀 **Pipelines & Deployment**: Build, test, lint, and deploy your project via the "Run Agent" trigger.\n\nFeel free to ask a question or describe a feature you'd like to build!`;
+    // 2. Capabilities & Identity
+    if (lower.includes('who are you') || lower.includes('what can you do') || lower === 'help') {
+      return `I am an AI Coding Agent in **AI Hub**.\n\nHere is what I can help you with:\n1. 💬 **Interactive Chat**: Answer coding questions, explain architectural concepts, inspect connection status, and plan implementations.\n2. 🛠️ **Code Implementation**: Write components, backend services, API endpoints, and database models.\n3. 🔍 **Repository Guidance**: Review changes, Git branches, and repository architecture.\n4. 🚀 **Pipelines & Deployment**: Build, test, lint, and deploy your project via the "Run Agent" trigger.\n\nFeel free to ask a question or describe a feature you'd like to build!`;
     }
 
-    // 3. Auth and common coding questions
+    // 3. GitHub / MCP Connection Status Check
+    if (
+      lower.includes('connect with git hub') ||
+      lower.includes('connect with github') ||
+      lower.includes('connected with github') ||
+      lower.includes('connected to github') ||
+      lower.includes('is github connected') ||
+      lower.includes('github status') ||
+      lower.includes('git status')
+    ) {
+      const isMcpConnected = context.mcpContext?.status === 'connected';
+      const isRepoConnected = context.repositoryContext?.status === 'connected' || Boolean(context.repositoryContext?.owner);
+      const repoName = context.repositoryContext ? `${context.repositoryContext.owner}/${context.repositoryContext.name}` : 'Not configured';
+      const branch = context.repositoryContext?.branch || 'main';
+
+      if (isMcpConnected || isRepoConnected) {
+        return `### 🐙 GitHub Connection Status\n\nYes, GitHub is connected!\n\n- **GitHub MCP Server**: \`${context.mcpContext?.status || 'connected'}\` (${context.mcpContext?.authMethod?.toUpperCase() || 'PAT'} authenticated)\n- **Repository**: \`${repoName}\`\n- **Active Target Branch**: \`${branch}\`\n- **MCP Tool Discovery**: ${context.mcpContext?.hasDiscoveredTools ? '✅ Active (official GitHub tools loaded)' : 'Ready'}\n\nYou can inspect tools and connection settings anytime in **Agent Settings > GitHub MCP Server**.`;
+      } else {
+        return `### 🐙 GitHub Connection Status\n\nGitHub is currently **Not Connected**.\n\nTo connect:\n1. Open **Agent Settings**.\n2. Select **Tab 14: GitHub MCP Server**.\n3. Enter your Personal Access Token (PAT) with \`repo\` scope and click **Connect GitHub**.\n\nOnce connected, I will be able to inspect repositories, manage branches, and interact with GitHub via MCP tools.`;
+      }
+    }
+
+    // 4. Explanation for "why agent not simple question to simple answer"
+    if (
+      lower.includes('simple quiestion') ||
+      lower.includes('simple question') ||
+      lower.includes('simple answer')
+    ) {
+      return `### 💬 Conversational Mode Enabled\n\nI understand your concern! Previously, my system ran full autonomous build, test, and deployment pipelines whenever development keywords like 'git' or 'deploy' were detected—even for simple questions.\n\n**This has now been fixed**:\n- **Simple Questions & Chat**: When you ask a question (like checking GitHub status, asking about architecture, or saying hello), I will answer you directly and conversationally without executing pipelines.\n- **Autonomous Execution**: Only explicit commands to modify code, build, or deploy (e.g. *"Add a health endpoint in backend"*, *"Fix the typescript error"*, *"Deploy to main"*) will trigger the execution engine.\n\nYou can now ask any question directly!`;
+    }
+
+    // 5. Explanation for "why failed deployment"
+    if (
+      lower.includes('why fail') ||
+      lower.includes('why did deployment fail') ||
+      lower.includes('deployment status')
+    ) {
+      const deployStatus = context.deploymentContext?.status || 'approval_required';
+      const healthCheck = context.deploymentContext?.healthCheckUrl || 'http://localhost:5001/api/health';
+      return `### ℹ️ Deployment Status & Failure Analysis\n\nDeployments in this project follow strict safety and verification policies:\n\n1. **Deployment Policy**: Current strategy is set to **${context.deploymentContext?.strategy || 'approval_required'}**. In this mode, deployments will pause with an \`Approval_required\` status until explicitly approved or switched to \`automatic\`.\n2. **Health Check Verification**: After deployment steps run, an automated health check is performed against \`${healthCheck}\`. If the service is unreachable or does not return HTTP 200, the deployment marks as failed.\n3. **Target Branch Alignment**: Changes must be staged on \`${context.repositoryContext?.branch || 'main'}\` and tracked cleanly on the remote repository.\n\nYou can configure the deployment strategy, pre/post deployment commands, and health check URL in **Agent Settings > Deployment**.`;
+    }
+
+    // 6. Auth and common coding questions
     if (lower.includes('auth') || lower.includes('jwt') || lower.includes('login')) {
       return `Here is a recommended approach for implementing authentication in **${context.technologyStack || 'TypeScript & Node.js'}**:\n\n### Authentication Architecture\n1. **JWT Access Tokens**: Sign tokens with an expiration time for stateless session verification.\n2. **Middleware Guard**: Validate incoming Bearer tokens on protected routes.\n3. **Password Security**: Hash passwords using \`bcrypt\` with appropriate salt rounds.\n\n\`\`\`typescript\nimport { Request, Response, NextFunction } from 'express';\nimport jwt from 'jsonwebtoken';\n\nexport function authMiddleware(req: Request, res: Response, next: NextFunction) {\n  const authHeader = req.headers.authorization;\n  if (!authHeader?.startsWith('Bearer ')) {\n    return res.status(401).json({ error: 'Unauthorized: Missing token' });\n  }\n  const token = authHeader.split(' ')[1];\n  try {\n    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret');\n    (req as any).user = decoded;\n    next();\n  } catch (err) {\n    return res.status(403).json({ error: 'Invalid or expired token' });\n  }\n}\n\`\`\`\n\nWould you like me to provide the registration and login controller methods as well?`;
     }
 
-    // 4. Default conversational response
-    return `I received your message:\n\n> "${message}"\n\nI can help you build this for your **${context.technologyStack || 'development stack'}**.\n\nHere's how we can proceed:\n- If you have specific file structures or questions, ask away and I'll generate the code for you!\n- If you want to trigger a full automated multi-step build, test, and deployment run, you can click the green **Run Agent** button anytime.\n\n*(Note: Set \`GEMINI_API_KEY\` or \`OPENAI_API_KEY\` in \`backend/.env\` to enable live cloud model generation).*`;
+    // 7. General concept questions (what is X, how does X work)
+    if (lower.startsWith('what is ') || lower.startsWith('what are ') || lower.startsWith('how does ')) {
+      return `### 💡 Question: "${message}"\n\nI can help explain that!\n- In your project stack (**${context.technologyStack || 'TypeScript, Node.js, React'}**), architecture components are modularly decoupled.\n- For repositories, your active target is **${context.repositoryContext?.owner || 'owner'}/${context.repositoryContext?.name || 'repo'}** on branch **${context.repositoryContext?.branch || 'main'}**.\n\nLet me know if you would like code examples, architectural diagrams, or step-by-step guidance on this topic.`;
+    }
+
+    // 8. Default conversational response
+    return `I received your message:\n\n> "${message}"\n\nI am your AI assistant for **${context.technologyStack || 'TypeScript, Node.js, React'}**.\n\n- Feel free to ask any question or ask for explanations—I'll respond conversationally.\n- If you'd like me to implement changes or run a build/test pipeline, simply give me an actionable instruction (e.g., *"Add a health endpoint in backend"* or *"Fix the typescript error"*).`;
   }
 
   async chatStream(
