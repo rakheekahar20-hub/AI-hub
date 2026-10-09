@@ -488,6 +488,27 @@ export class ExecutionEngine extends EventEmitter {
     // Check if package.json exists in workspace
     const hasPkg = fs.existsSync(path.join(workspaceRoot, 'package.json'));
 
+    // Automatically check and install dependencies if node_modules or .bin is missing
+    if (hasPkg) {
+      const hasNodeModules = fs.existsSync(path.join(workspaceRoot, 'node_modules'));
+      const hasNodeBin = fs.existsSync(path.join(workspaceRoot, 'node_modules', '.bin'));
+      if (!hasNodeModules || !hasNodeBin) {
+        const installCmd = testConfig.installCommand || 'npm install';
+        await this.addLog(executionId, 'info', 'Build Runner', `Dependencies missing in workspace. Running install: ${installCmd}`);
+        options.onProgress?.(`📦 [Step 7: Setup] Installing dependencies via: ${installCmd}...\n`);
+        const installRes = await TerminalExecutionService.execute(installCmd, {
+          cwd: workspaceRoot,
+          timeout: 120000
+        });
+        if (!installRes.success) {
+          await this.addLog(executionId, 'warn', 'Build Runner', `Dependency install warning: ${installRes.stderr || installRes.stdout}`);
+        } else {
+          await this.addLog(executionId, 'success', 'Build Runner', `Dependencies installed successfully.`);
+          options.onProgress?.(`✔ Dependencies installed in isolated workspace.\n`);
+        }
+      }
+    }
+
     if (hasPkg && testConfig.buildCommand && testConfig.buildCommand !== 'none') {
       await this.addLog(executionId, 'info', 'Build Runner', `Running build verification command: ${testConfig.buildCommand}`);
       options.onProgress?.(`🔨 [Step 7: Verification] Executing build command: ${testConfig.buildCommand}...\n`);
