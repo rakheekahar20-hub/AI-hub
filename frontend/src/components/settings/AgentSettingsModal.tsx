@@ -185,9 +185,12 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({
         testingConfig: agent.testingConfig ? { ...agent.testingConfig } : undefined,
         deploymentConfig: agent.deploymentConfig ? { ...agent.deploymentConfig } : undefined,
         webhooks: agent.webhooks ? [...agent.webhooks] : [],
-        securityConfig: agent.securityConfig ? { ...agent.securityConfig } : undefined
+        securityConfig: agent.securityConfig ? { ...agent.securityConfig } : undefined,
+        mcpConfig: agent.mcpConfig ? { ...agent.mcpConfig } : undefined
       });
       setError(null);
+      setMcpSuccessMessage(null);
+      setMcpErrorMessage(null);
     }
   };
 
@@ -221,6 +224,123 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({
       setAiTestResult({ success: false, message: err.message || 'Connection test failed' });
     } finally {
       setAiTesting(false);
+    }
+  };
+
+  const handleConnectMCP = async () => {
+    if (!mcpApiKey.trim()) {
+      setMcpErrorMessage('Please enter a GitHub Personal Access Token or OAuth token.');
+      return;
+    }
+    setMcpLoading(true);
+    setMcpStatus('connecting');
+    setMcpSuccessMessage(null);
+    setMcpErrorMessage(null);
+    try {
+      const res = await agentService.connectGitHubMCP(agent.id, {
+        serverUrl: mcpServerUrl,
+        authMethod: mcpAuthMethod,
+        apiKey: mcpApiKey.trim(),
+        scopes: mcpScopes
+      });
+      if (res.success) {
+        setMcpStatus('connected');
+        setMcpDiscoveredTools(res.tools || []);
+        setMcpUser(res.user || null);
+        setMcpSuccessMessage(res.message || 'Successfully connected to GitHub MCP Server!');
+        setMcpLastConnectedAt(new Date().toISOString());
+        setMcpApiKey(''); // Cleared from UI memory for security
+        if (res.config) {
+          onAgentUpdated({ ...agent, mcpConfig: res.config });
+        }
+      } else {
+        setMcpStatus('error');
+        setMcpErrorMessage(res.message || res.error || 'Failed to connect to GitHub MCP Server.');
+      }
+    } catch (err: any) {
+      setMcpStatus('error');
+      setMcpErrorMessage(err.message || 'Failed to connect to GitHub MCP Server.');
+    } finally {
+      setMcpLoading(false);
+    }
+  };
+
+  const handleTestMCP = async () => {
+    if (!mcpApiKey.trim()) {
+      setMcpErrorMessage('Please enter a GitHub token to test connection.');
+      return;
+    }
+    setMcpTesting(true);
+    setMcpSuccessMessage(null);
+    setMcpErrorMessage(null);
+    try {
+      const res = await agentService.testGitHubMCPConnection({
+        serverUrl: mcpServerUrl,
+        authMethod: mcpAuthMethod,
+        apiKey: mcpApiKey.trim(),
+        scopes: mcpScopes
+      }, agent.id);
+      if (res.success) {
+        setMcpSuccessMessage(res.message || 'Connection test successful!');
+        setMcpDiscoveredTools(res.tools || []);
+        setMcpUser(res.user || null);
+      } else {
+        setMcpErrorMessage(res.message || res.error || 'Connection test failed.');
+      }
+    } catch (err: any) {
+      setMcpErrorMessage(err.message || 'Connection test failed.');
+    } finally {
+      setMcpTesting(false);
+    }
+  };
+
+  const handleDisconnectMCP = async () => {
+    setMcpLoading(true);
+    setMcpSuccessMessage(null);
+    setMcpErrorMessage(null);
+    try {
+      const res = await agentService.disconnectGitHubMCP(agent.id);
+      if (res.success) {
+        setMcpStatus('not_connected');
+        setMcpDiscoveredTools([]);
+        setMcpUser(null);
+        setMcpSuccessMessage('GitHub MCP Server disconnected.');
+        if (res.config) {
+          onAgentUpdated({ ...agent, mcpConfig: res.config });
+        }
+      }
+    } catch (err: any) {
+      setMcpErrorMessage(err.message || 'Failed to disconnect MCP server.');
+    } finally {
+      setMcpLoading(false);
+    }
+  };
+
+  const handleReconnectMCP = async () => {
+    setMcpLoading(true);
+    setMcpStatus('connecting');
+    setMcpSuccessMessage(null);
+    setMcpErrorMessage(null);
+    try {
+      const res = await agentService.reconnectGitHubMCP(agent.id);
+      if (res.success) {
+        setMcpStatus('connected');
+        setMcpDiscoveredTools(res.tools || []);
+        setMcpUser(res.user || null);
+        setMcpSuccessMessage(res.message || 'Successfully reconnected to GitHub MCP Server!');
+        setMcpLastConnectedAt(new Date().toISOString());
+        if (res.config) {
+          onAgentUpdated({ ...agent, mcpConfig: res.config });
+        }
+      } else {
+        setMcpStatus('error');
+        setMcpErrorMessage(res.message || res.error || 'Reconnection failed.');
+      }
+    } catch (err: any) {
+      setMcpStatus('error');
+      setMcpErrorMessage(err.message || 'Reconnection failed.');
+    } finally {
+      setMcpLoading(false);
     }
   };
 
@@ -959,6 +1079,268 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({
                       </div>
                     </div>
                   ))
+                )}
+              </div>
+            )}
+
+            {/* TAB 14: GitHub MCP Server */}
+            {activeTab === 'mcp' && (
+              <div className="space-y-5 max-w-3xl text-xs">
+                {/* Header card with status */}
+                <div className="p-4 bg-[#141b25] border border-[#232e3d] rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-purple-600/20 border border-purple-500/30 flex items-center justify-center text-purple-400 flex-shrink-0">
+                      <Network className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-sm font-semibold text-slate-100">GitHub MCP Server</h4>
+                        {/* Status Badge */}
+                        {mcpStatus === 'connected' && (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                            Connected
+                          </span>
+                        )}
+                        {mcpStatus === 'connecting' && (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            Connecting...
+                          </span>
+                        )}
+                        {mcpStatus === 'error' && (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-red-500/10 text-red-400 border border-red-500/30">
+                            <AlertCircle className="w-3 h-3" />
+                            Connection Failed
+                          </span>
+                        )}
+                        {mcpStatus === 'not_connected' && (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-slate-800 text-slate-400 border border-slate-700">
+                            <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+                            Not Connected
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Access GitHub tools through authenticated Model Context Protocol (MCP) server
+                      </p>
+                    </div>
+                  </div>
+
+                  {mcpUser && (
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-[#1a2332] border border-[#2b394f] rounded-xl self-stretch sm:self-auto">
+                      {mcpUser.avatarUrl && (
+                        <img src={mcpUser.avatarUrl} alt={mcpUser.login} className="w-5 h-5 rounded-full" />
+                      )}
+                      <span className="text-slate-300 font-mono text-[11px]">@{mcpUser.login}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Notifications */}
+                {mcpSuccessMessage && (
+                  <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-xl flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                      <span>{mcpSuccessMessage}</span>
+                    </div>
+                    <button onClick={() => setMcpSuccessMessage(null)} className="text-emerald-400/60 hover:text-emerald-400">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+
+                {mcpErrorMessage && (
+                  <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                      <span>{mcpErrorMessage}</span>
+                    </div>
+                    <button onClick={() => setMcpErrorMessage(null)} className="text-red-400/60 hover:text-red-400">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+
+                {/* Authentication Method Selection */}
+                <div className="space-y-1.5">
+                  <label className="block text-slate-300 font-medium">Authentication Method</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setMcpAuthMethod('pat')}
+                      className={`p-3 rounded-xl border text-left transition-all ${
+                        mcpAuthMethod === 'pat'
+                          ? 'border-blue-500 bg-blue-600/10 text-white'
+                          : 'border-[#232e3d] bg-[#161d27] text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <div className="font-semibold text-xs flex items-center gap-1.5">
+                        <Key className="w-3.5 h-3.5 text-blue-400" />
+                        Personal Access Token (PAT)
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-0.5">Classic or fine-grained GitHub token</p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setMcpAuthMethod('oauth')}
+                      className={`p-3 rounded-xl border text-left transition-all ${
+                        mcpAuthMethod === 'oauth'
+                          ? 'border-blue-500 bg-blue-600/10 text-white'
+                          : 'border-[#232e3d] bg-[#161d27] text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <div className="font-semibold text-xs flex items-center gap-1.5">
+                        <Github className="w-3.5 h-3.5 text-purple-400" />
+                        GitHub OAuth
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-0.5">GitHub App or User OAuth token</p>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Configuration Inputs */}
+                <div className="space-y-3.5 p-4 bg-[#141b25] border border-[#232e3d] rounded-2xl">
+                  {/* MCP Server Endpoint */}
+                  <div>
+                    <label className="block text-slate-300 font-medium mb-1">
+                      MCP Server Endpoint / Command
+                    </label>
+                    <input
+                      type="text"
+                      value={mcpServerUrl}
+                      onChange={e => setMcpServerUrl(e.target.value)}
+                      placeholder="npx -y @modelcontextprotocol/server-github or https://mcp.internal/sse"
+                      className="w-full px-3 py-2 bg-[#161d27] border border-[#232e3d] rounded-xl text-white font-mono text-xs focus:outline-none focus:border-blue-500"
+                    />
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      Stdio command or SSE/HTTP endpoint for the official GitHub MCP server.
+                    </p>
+                  </div>
+
+                  {/* GitHub Token / API Key */}
+                  <div>
+                    <label className="block text-slate-300 font-medium mb-1 flex items-center justify-between">
+                      <span>GitHub {mcpAuthMethod === 'pat' ? 'Personal Access Token' : 'OAuth Token'}</span>
+                      {agent?.mcpConfig?.apiKeyMasked && (
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          Saved: {agent.mcpConfig.apiKeyMasked}
+                        </span>
+                      )}
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showMcpKey ? 'text' : 'password'}
+                        value={mcpApiKey}
+                        onChange={e => setMcpApiKey(e.target.value)}
+                        placeholder={agent?.mcpConfig?.apiKeyMasked ? "Leave blank to keep saved token, or enter new token" : "ghp_xxxxxxxxxxxxxxxxxxxx"}
+                        className="w-full pl-3 pr-10 py-2 bg-[#161d27] border border-[#232e3d] rounded-xl text-white font-mono text-xs focus:outline-none focus:border-blue-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowMcpKey(!showMcpKey)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                      >
+                        {showMcpKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-slate-500 mt-1 flex items-center gap-1">
+                      <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                      Encrypted and stored securely on backend. Never exposed to browser or chat responses.
+                    </p>
+                  </div>
+
+                  {/* Scopes */}
+                  <div>
+                    <label className="block text-slate-300 font-medium mb-1">Requested GitHub Scopes</label>
+                    <input
+                      type="text"
+                      value={mcpScopes}
+                      onChange={e => setMcpScopes(e.target.value)}
+                      placeholder="repo,read:user"
+                      className="w-full px-3 py-2 bg-[#161d27] border border-[#232e3d] rounded-xl text-white font-mono text-xs focus:outline-none focus:border-blue-500"
+                    />
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      Minimum required: <code className="text-slate-300">repo</code> (for code/PRs/commits) and <code className="text-slate-300">read:user</code>.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                  <button
+                    type="button"
+                    disabled={mcpLoading || mcpTesting}
+                    onClick={handleConnectMCP}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:opacity-50 text-white font-semibold rounded-xl text-xs flex items-center gap-2 shadow-md shadow-blue-600/20 transition-colors"
+                  >
+                    {mcpLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Github className="w-3.5 h-3.5" />}
+                    <span>Connect GitHub</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={mcpLoading || mcpTesting}
+                    onClick={handleTestMCP}
+                    className="px-4 py-2 bg-[#1c2432] hover:bg-[#253042] border border-[#2e3c50] text-slate-200 font-medium rounded-xl text-xs flex items-center gap-2 transition-colors"
+                  >
+                    {mcpTesting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                    <span>Test Connection</span>
+                  </button>
+
+                  {mcpStatus === 'connected' && (
+                    <button
+                      type="button"
+                      disabled={mcpLoading}
+                      onClick={handleDisconnectMCP}
+                      className="px-3.5 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 font-medium rounded-xl text-xs flex items-center gap-1.5 transition-colors ml-auto"
+                    >
+                      <Plug className="w-3.5 h-3.5" />
+                      <span>Disconnect</span>
+                    </button>
+                  )}
+
+                  {(mcpStatus === 'not_connected' || mcpStatus === 'error') && agent?.mcpConfig?.apiKeyMasked && (
+                    <button
+                      type="button"
+                      disabled={mcpLoading}
+                      onClick={handleReconnectMCP}
+                      className="px-3.5 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 font-medium rounded-xl text-xs flex items-center gap-1.5 transition-colors ml-auto"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Reconnect</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Discovered MCP Tools Section */}
+                {mcpDiscoveredTools.length > 0 && (
+                  <div className="space-y-2.5 pt-2">
+                    <div className="flex items-center justify-between">
+                      <h5 className="font-semibold text-slate-200 flex items-center gap-1.5">
+                        <Plug className="w-3.5 h-3.5 text-purple-400" />
+                        Discovered GitHub MCP Tools ({mcpDiscoveredTools.length})
+                      </h5>
+                      <span className="text-[10px] text-slate-500">
+                        Tools granted by authenticated scopes
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto p-1 scrollbar-thin">
+                      {mcpDiscoveredTools.map((t, idx) => (
+                        <div key={idx} className="p-2.5 bg-[#141b25] border border-[#232e3d] rounded-xl flex flex-col justify-between hover:border-slate-600 transition-colors">
+                          <div className="flex items-center gap-1.5 font-mono text-[11px] text-blue-400 font-semibold truncate">
+                            <span className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
+                            <span className="truncate">{t.name}</span>
+                          </div>
+                          <p className="text-[10px] text-slate-400 mt-1 line-clamp-2 leading-relaxed">
+                            {t.description}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 )}
               </div>
             )}
