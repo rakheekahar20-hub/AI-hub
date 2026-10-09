@@ -4,7 +4,7 @@ import { prisma } from '../database/db.js';
 import { AIProviderFactory } from '../ai/AIProviderFactory.js';
 import { executionEngine } from '../execution/ExecutionEngine.js';
 
-function isDevelopmentTask(prompt: string): boolean {
+export function isDevelopmentTask(prompt: string): boolean {
   if (!prompt || typeof prompt !== 'string') return false;
   const p = prompt.trim();
   const lower = p.toLowerCase();
