@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>amr_telemetry</name>
+  <version>0.1.0</version>
+  <description>AMR Telemetry Package</description>
+  <maintainer email="dev@example.com">Dev</maintainer>
+  <license>Apache-2.0</license>
+  <depend>rclcpp</depend>
+  <depend>sensor_msgs</depend>
+  <exec_depend>ros2launch</exec_depend>
+</package>

@@ -1,0 +1,12 @@
+{
+  "name": "amr-dashboard",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build"
+  },
+  "dependencies": {
+    "react": "^18.2.0"
+  }
+}

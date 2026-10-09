@@ -1,0 +1,15 @@
+name: ROS2 CI
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup ROS2 Humble
+        uses: ros-tooling/setup-ros@v0.6
+        with:
+          required-ros-distributions: humble
+      - name: Build workspace
+        run: colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release

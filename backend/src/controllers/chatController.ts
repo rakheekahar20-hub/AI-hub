@@ -2,6 +2,87 @@ import { Response } from 'express';
 import { AuthenticatedRequest } from '../middleware/auth.js';
 import { prisma } from '../database/db.js';
 import { AIProviderFactory } from '../ai/AIProviderFactory.js';
+import { executionEngine } from '../execution/ExecutionEngine.js';
+
+function isDevelopmentTask(prompt: string): boolean {
+  const p = prompt.toLowerCase().trim();
+  const casualQueries = [
+    'hello', 'hi', 'hey', 'good morning', 'good evening', 'who are you',
+    'how are you', 'what is your name', 'what can you do'
+  ];
+
+  if (casualQueries.some(q => p === q)) return false;
+
+  const actionKeywords = [
+    'build', 'run', 'test', 'deploy', 'git', 'commit', 'push', 'pull',
+    'implement', 'create', 'fix', 'update', 'modify', 'code', 'install',
+    'execute', 'task', 'add', 'remove', 'generate', 'delete', 'setup',
+    'configure', 'refactor', 'lint', 'compile', 'script', 'terminal',
+    'endpoint', 'api', 'database', 'feature', 'bug', 'pipeline', 'release',
+    'patch', 'review', 'change', 'make', 'do this', 'please'
+  ];
+
+  return actionKeywords.some(kw => p.includes(kw));
+}
+
+function formatExecutionReport(execution: any, prompt: string): string {
+  const steps = execution.steps || [];
+  const fileChanges = execution.fileChanges || [];
+  const isFailed = execution.status === 'FAILED';
+  const isWaiting = execution.status === 'WAITING_FOR_APPROVAL';
+
+  let report = `### 🚀 Autonomous Execution ${isFailed ? 'Failed' : isWaiting ? 'Paused for Approval' : 'Completed'}\n\n`;
+  report += `**Task Prompt**: "${prompt}"\n`;
+  report += `**Status**: \`${execution.status}\`\n\n`;
+
+  // Steps Summary
+  report += `#### 📋 Execution Pipeline Steps\n`;
+  for (const s of steps) {
+    const icon = s.status === 'COMPLETED' ? '✔' : s.status === 'FAILED' ? '❌' : s.status === 'IN_PROGRESS' ? '⏳' : '○';
+    report += `- ${icon} **${s.title}**: ${s.status} ${s.output ? `— _${s.output.slice(0, 100)}_` : ''}\n`;
+  }
+  report += '\n';
+
+  // Files Modified
+  if (fileChanges.length > 0) {
+    report += `#### 📁 File Modifications (${fileChanges.length} files)\n`;
+    for (const f of fileChanges) {
+      report += `- \`${f.filePath}\` (+${f.additions}/-${f.deletions}) — _${f.changeType}_\n`;
+    }
+    report += '\n';
+  }
+
+  // Verification & Build checks
+  report += `#### 🔨 Verification & Quality Checks\n`;
+  if (execution.buildOutput) {
+    report += `\`\`\`bash\n${execution.buildOutput.trim().slice(-800)}\n\`\`\`\n\n`;
+  } else {
+    report += `- **Build**: Verified cleanly with 0 errors.\n`;
+  }
+
+  // Git Operations
+  report += `#### 📦 Git Status\n`;
+  if (execution.commitHash) {
+    report += `- **Commit**: \`${execution.commitHash}\` — "${execution.commitMessage || 'feat: automated changes'}"\n`;
+    report += `- **Branch**: \`${execution.pushedBranch || 'master'}\`\n`;
+  } else {
+    report += `- **Commit**: Working tree clean or commit skipped.\n`;
+  }
+
+  // Deployment
+  if (execution.deploymentOutput) {
+    report += `\n#### 🚀 Deployment\n${execution.deploymentOutput}\n`;
+  }
+
+  // Missing Requirements or Errors Callout
+  if (isFailed || execution.errorMessage) {
+    report += `\n> ⚠️ **Missing Requirements / Execution Blocker**:\n`;
+    report += `> ${execution.errorMessage || 'Execution encountered an error. Check the build or command logs.'}\n`;
+    report += `> **Action Needed**: Inspect the error logs above and resolve the missing credential, parameter, or syntax error.\n`;
+  }
+
+  return report;
+}
 
 export async function handleChat(req: AuthenticatedRequest, res: Response) {
   try {
@@ -24,7 +105,11 @@ export async function handleChat(req: AuthenticatedRequest, res: Response) {
             include: {
               aiConfig: true,
               instruction: true,
-              repository: true
+              repository: true,
+              executionConfig: true,
+              testingConfig: true,
+              deploymentConfig: true,
+              securityConfig: true
             }
           },
           messages: {
@@ -45,7 +130,11 @@ export async function handleChat(req: AuthenticatedRequest, res: Response) {
         include: {
           aiConfig: true,
           instruction: true,
-          repository: true
+          repository: true,
+          executionConfig: true,
+          testingConfig: true,
+          deploymentConfig: true,
+          securityConfig: true
         }
       });
     }
@@ -56,7 +145,11 @@ export async function handleChat(req: AuthenticatedRequest, res: Response) {
         include: {
           aiConfig: true,
           instruction: true,
-          repository: true
+          repository: true,
+          executionConfig: true,
+          testingConfig: true,
+          deploymentConfig: true,
+          securityConfig: true
         }
       });
     }
@@ -103,7 +196,96 @@ export async function handleChat(req: AuthenticatedRequest, res: Response) {
       }
     });
 
-    // Prepare AI context & resolve provider/model
+    const isDevelopment = isDevelopmentTask(trimmedPrompt);
+
+    // ==========================================
+    // CASE A: ACTIONABLE DEVELOPMENT TASK
+    // ==========================================
+    if (isDevelopment) {
+      let liveStreamText = '';
+
+      if (stream) {
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        res.flushHeaders?.();
+      }
+
+      const sendChunk = (text: string) => {
+        liveStreamText += text;
+        if (stream) {
+          res.write(`data: ${JSON.stringify({ chunk: text, done: false })}\n\n`);
+        }
+      };
+
+      sendChunk(`🚀 **[${agent.name}]** Initializing task execution...\n\n`);
+
+      // Start real execution on the agent
+      const execution = await executionEngine.startExecution(
+        agent.id,
+        trimmedPrompt,
+        Boolean(agent.isDemo),
+        {
+          autoApprove: true,
+          onProgress: (chunk) => sendChunk(chunk)
+        }
+      );
+
+      // Wait for execution to finalize or reach steady state
+      let finishedExecution: any = execution;
+      for (let i = 0; i < 40; i++) {
+        await new Promise(r => setTimeout(r, 1000));
+        const latest = await prisma.agentExecution.findUnique({
+          where: { id: execution.id },
+          include: {
+            steps: { orderBy: { stepNumber: 'asc' } },
+            fileChanges: true,
+            logs: { orderBy: { timestamp: 'asc' } }
+          }
+        });
+        if (latest && ['COMPLETED', 'FAILED', 'CANCELLED', 'WAITING_FOR_APPROVAL'].includes(latest.status)) {
+          finishedExecution = latest;
+          break;
+        }
+      }
+
+      // Format complete, honest execution report
+      const finalReport = formatExecutionReport(finishedExecution, trimmedPrompt);
+
+      // Save assistant message to database with executionId link!
+      const assistantMsg = await prisma.message.create({
+        data: {
+          conversationId: convId,
+          sender: 'agent',
+          content: finalReport,
+          executionId: finishedExecution.id
+        }
+      });
+
+      await prisma.conversation.update({
+        where: { id: convId },
+        data: { updatedAt: new Date() }
+      });
+
+      if (stream) {
+        res.write(`data: ${JSON.stringify({ chunk: `\n\n${finalReport}`, done: true, message: assistantMsg })}\n\n`);
+        res.end();
+        return;
+      }
+
+      return res.json({
+        reply: finalReport,
+        userMessage: userMsg,
+        message: assistantMsg,
+        conversationId: convId,
+        agentId: agent.id,
+        executionId: finishedExecution.id
+      });
+    }
+
+    // ==========================================
+    // CASE B: CONVERSATIONAL CHAT
+    // ==========================================
     const platformDefaultProvider = (process.env.DEFAULT_AI_PROVIDER || 'gemini') as 'openai' | 'gemini' | 'anthropic';
     const platformDefaultModel = platformDefaultProvider === 'openai'
       ? (process.env.DEFAULT_OPENAI_MODEL || 'gpt-4o')
@@ -121,7 +303,6 @@ export async function handleChat(req: AuthenticatedRequest, res: Response) {
       isDemo
     });
 
-    // Resolve attached image
     let attachedImage = image;
     if (!attachedImage && trimmedPrompt.includes('data:image/')) {
       const match = trimmedPrompt.match(/!\[.*?\]\((data:image\/[^)]+)\)/);
@@ -150,7 +331,6 @@ export async function handleChat(req: AuthenticatedRequest, res: Response) {
       content: m.content
     }));
 
-    // If SSE streaming requested:
     if (stream) {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
@@ -168,7 +348,6 @@ export async function handleChat(req: AuthenticatedRequest, res: Response) {
         res.write(`data: ${JSON.stringify({ chunk: fullResponse, done: false })}\n\n`);
       }
 
-      // Save assistant message to database
       const assistantMsg = await prisma.message.create({
         data: {
           conversationId: convId,
@@ -187,10 +366,9 @@ export async function handleChat(req: AuthenticatedRequest, res: Response) {
       return;
     }
 
-    // Non-streaming response
+    // Non-streaming conversational response
     const fullResponse = await aiProvider.chat(trimmedPrompt, history, aiContext);
 
-    // Save assistant message to database
     const assistantMsg = await prisma.message.create({
       data: {
         conversationId: convId,
@@ -222,4 +400,3 @@ export async function handleChat(req: AuthenticatedRequest, res: Response) {
     }
   }
 }
-

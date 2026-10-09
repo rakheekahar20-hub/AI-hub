@@ -279,6 +279,12 @@ export const WorkspaceLayout: React.FC = () => {
 
       // 5. Finalize with persistent message from backend
       setIsAgentThinking(false);
+      if (result.message?.executionId) {
+        setActiveExecutionId(result.message.executionId);
+        executionService.getExecution(result.message.executionId).then(exec => {
+          setExecutionsMap(prev => ({ ...prev, [exec.id]: exec }));
+        }).catch(() => {});
+      }
       setCurrentConversation(prev => {
         if (!prev) return null;
         return {

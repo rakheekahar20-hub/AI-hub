@@ -1,80 +1,111 @@
+import { TerminalExecutionService } from '../execution/TerminalExecutionService.js';
+
 export interface DeploymentResult {
   success: boolean;
   deploymentOutput: string;
   healthCheckStatus: 'healthy' | 'unhealthy' | 'unreachable' | 'not_configured';
   message: string;
+  error?: string;
 }
 
 export class DeploymentService {
   /**
-   * Run deployment flow
+   * Run real deployment flow
    */
   async deploy(config: {
-    provider: string;
-    deploymentCommand: string;
+    provider?: string;
+    deploymentCommand?: string | null;
     preDeploymentCommand?: string | null;
     postDeploymentCommand?: string | null;
     healthCheckUrl?: string | null;
     rollbackCommand?: string | null;
     isDemo?: boolean;
+    cwd?: string;
   }): Promise<DeploymentResult> {
-    if (!config.deploymentCommand) {
+    if (!config.deploymentCommand || !config.deploymentCommand.trim()) {
       return {
         success: false,
-        deploymentOutput: 'Error: No deployment command configured.',
+        deploymentOutput: 'Notice: No deployment command configured for this agent.',
         healthCheckStatus: 'not_configured',
-        message: 'Deployment command missing'
+        message: 'Deployment command is not configured on this agent. Please set deployment command in Agent Settings > Deployment.'
       };
     }
 
-    if (config.isDemo) {
-      let output = `[Demo Deployment Engine]\n`;
-      if (config.preDeploymentCommand) {
-        output += `> Executing Pre-deployment: ${config.preDeploymentCommand}\nPre-deploy checks passed (0 warnings)\n`;
-      }
-      output += `> Executing Deployment: ${config.deploymentCommand}\n`;
-      output += `Building container images...\nContainer tagged as v1.4.2\nStarting deployment to environment...\nContainer instance healthy (PID: 38419)\n`;
-      if (config.postDeploymentCommand) {
-        output += `> Executing Post-deployment: ${config.postDeploymentCommand}\nPost-deployment migration completed.\n`;
-      }
+    const cwd = config.cwd || TerminalExecutionService.getWorkspaceRoot();
+    let combinedOutput = '';
 
-      let healthStatus: 'healthy' | 'unhealthy' | 'unreachable' | 'not_configured' = 'not_configured';
-      if (config.healthCheckUrl) {
-        output += `> Performing Health Check on: ${config.healthCheckUrl}\nHTTP 200 OK - Health probe returned healthy (response time: 42ms)\n`;
-        healthStatus = 'healthy';
+    // 1. Pre-deployment command
+    if (config.preDeploymentCommand && config.preDeploymentCommand.trim()) {
+      combinedOutput += `> Pre-deployment: ${config.preDeploymentCommand}\n`;
+      const preRes = await TerminalExecutionService.execute(config.preDeploymentCommand, { cwd, timeout: 60000 });
+      combinedOutput += preRes.stdout ? `${preRes.stdout}\n` : '';
+      if (!preRes.success) {
+        combinedOutput += `Pre-deployment error: ${preRes.stderr}\n`;
+        return {
+          success: false,
+          deploymentOutput: combinedOutput,
+          healthCheckStatus: 'unhealthy',
+          message: `Pre-deployment step failed: ${preRes.stderr || 'Command exited with error'}`,
+          error: preRes.stderr
+        };
+      }
+    }
+
+    // 2. Main deployment command
+    combinedOutput += `> Executing Deployment: ${config.deploymentCommand}\n`;
+    const deployRes = await TerminalExecutionService.execute(config.deploymentCommand, { cwd, timeout: 120000 });
+    combinedOutput += deployRes.stdout ? `${deployRes.stdout}\n` : '';
+
+    if (!deployRes.success) {
+      combinedOutput += `Deployment error: ${deployRes.stderr}\n`;
+      if (config.rollbackCommand) {
+        combinedOutput += `> Triggering Rollback: ${config.rollbackCommand}\n`;
+        const rollbackRes = await TerminalExecutionService.execute(config.rollbackCommand, { cwd });
+        combinedOutput += rollbackRes.stdout || rollbackRes.stderr;
       }
 
       return {
-        success: true,
-        deploymentOutput: output,
-        healthCheckStatus: healthStatus,
-        message: 'Deployment completed successfully'
+        success: false,
+        deploymentOutput: combinedOutput,
+        healthCheckStatus: 'unhealthy',
+        message: `Deployment failed with exit code ${deployRes.exitCode}: ${deployRes.stderr}`,
+        error: deployRes.stderr
       };
     }
 
-    // Real deployment execution
-    let output = `> Running real deployment command: ${config.deploymentCommand}\n`;
-    let healthStatus: 'healthy' | 'unhealthy' | 'unreachable' | 'not_configured' = 'not_configured';
+    // 3. Post-deployment command
+    if (config.postDeploymentCommand && config.postDeploymentCommand.trim()) {
+      combinedOutput += `> Post-deployment: ${config.postDeploymentCommand}\n`;
+      const postRes = await TerminalExecutionService.execute(config.postDeploymentCommand, { cwd, timeout: 60000 });
+      combinedOutput += postRes.stdout ? `${postRes.stdout}\n` : '';
+    }
 
-    if (config.healthCheckUrl) {
+    // 4. Live health check verification
+    let healthStatus: 'healthy' | 'unhealthy' | 'unreachable' | 'not_configured' = 'not_configured';
+    if (config.healthCheckUrl && config.healthCheckUrl.trim()) {
+      combinedOutput += `> Probing Health Check: ${config.healthCheckUrl}\n`;
       try {
-        const res = await fetch(config.healthCheckUrl, { signal: AbortSignal.timeout(5000) });
-        healthStatus = res.ok ? 'healthy' : 'unhealthy';
-        output += `Health check on ${config.healthCheckUrl}: HTTP ${res.status}\n`;
+        const res = await fetch(config.healthCheckUrl, { signal: AbortSignal.timeout(8000) });
+        if (res.ok) {
+          healthStatus = 'healthy';
+          combinedOutput += `Health Check Passed: HTTP ${res.status} OK (Host is healthy)\n`;
+        } else {
+          healthStatus = 'unhealthy';
+          combinedOutput += `Health Check Warning: HTTP ${res.status} ${res.statusText}\n`;
+        }
       } catch (err: any) {
         healthStatus = 'unreachable';
-        output += `Health check probe failed: ${err.message}\n`;
+        combinedOutput += `Health Check Error: Target URL unreachable (${err.message})\n`;
       }
     }
 
     return {
       success: true,
-      deploymentOutput: output,
+      deploymentOutput: combinedOutput,
       healthCheckStatus: healthStatus,
-      message: 'Deployment finished'
+      message: `Deployment executed successfully${healthStatus === 'healthy' ? ' and verified healthy' : ''}.`
     };
   }
 }
 
 export const deploymentService = new DeploymentService();
-
