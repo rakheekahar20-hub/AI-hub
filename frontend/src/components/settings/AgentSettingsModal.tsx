@@ -450,13 +450,30 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-medium text-slate-300 mb-1">Agent Type</label>
+                    <label className="block text-xs font-medium text-slate-300 mb-1">Agent Developer Role</label>
                     <input
                       type="text"
                       value={formData.agentType || ''}
                       onChange={e => setFormData({ ...formData, agentType: e.target.value })}
+                      placeholder="e.g. Full Stack Developer, QA Engineer, Mobile Developer"
                       className="w-full px-3.5 py-2 bg-[#161d27] border border-[#232e3d] rounded-xl text-xs text-white"
                     />
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {['Full Stack Developer', 'QA Engineer', 'Mobile App Developer', 'AI / ML Engineer', 'Frontend Developer', 'Backend Developer'].map(role => (
+                        <button
+                          key={role}
+                          type="button"
+                          onClick={() => setFormData({ ...formData, agentType: role })}
+                          className={`text-[10px] px-2 py-0.5 rounded-md border transition-colors ${
+                            formData.agentType === role
+                              ? 'bg-blue-600/30 border-blue-500 text-blue-300 font-semibold'
+                              : 'bg-slate-800/60 border-slate-700/60 text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          {role}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-slate-300 mb-1">Environment</label>
@@ -543,6 +560,23 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({
                     <span className="text-xs text-slate-300 font-mono">{testResult}</span>
                   )}
                 </div>
+
+                {formData.repository?.repositoryUrl && (
+                  <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl space-y-2 mt-2">
+                    <div className="flex items-center justify-between text-xs font-medium text-emerald-400">
+                      <span className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                        Dedicated Isolated Workspace Active
+                      </span>
+                      <span className="font-mono text-[11px] text-emerald-300 bg-emerald-950/50 px-2 py-0.5 rounded border border-emerald-500/20">
+                        workspaces/{formData.repository?.repositoryName || 'HealthcareApp'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-300 leading-relaxed">
+                      🛡️ <strong>Safety Guarantee:</strong> This agent works strictly inside <code className="text-emerald-300 bg-emerald-950/80 px-1 py-0.5 rounded">workspaces/{formData.repository?.repositoryName || 'HealthcareApp'}</code>. The <strong>AI Hub platform files</strong> will never be modified, uploaded, or committed to your client repository.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 

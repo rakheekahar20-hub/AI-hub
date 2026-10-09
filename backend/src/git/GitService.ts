@@ -1,4 +1,6 @@
 import { TerminalExecutionService } from '../execution/TerminalExecutionService.js';
+import fs from 'fs';
+import path from 'path';
 
 export interface GitTestResult {
   success: boolean;
@@ -19,6 +21,122 @@ export interface GitStatusResult {
 export class GitService {
   private getCwd(customCwd?: string): string {
     return customCwd || TerminalExecutionService.getWorkspaceRoot();
+  }
+
+  /**
+   * Automatically ensure an agent's dedicated repository workspace is cloned and synchronized.
+   * Isolates the client project (e.g. HealthcareApp) completely from the AI Hub application!
+   */
+  async ensureWorkspace(
+    agent: any,
+    token?: string
+  ): Promise<{
+    success: boolean;
+    workspacePath: string;
+    branch: string;
+    isCloned: boolean;
+    techStack?: string;
+    message: string;
+    error?: string;
+  }> {
+    const workspaceDir = TerminalExecutionService.getAgentWorkspace(agent);
+    const repoUrl = agent?.repository?.repositoryUrl?.trim();
+    const targetBranch = agent?.repository?.branch?.trim() || 'main';
+
+    if (!repoUrl || repoUrl.includes('example.com') || repoUrl.includes('demo')) {
+      return {
+        success: true,
+        workspacePath: workspaceDir,
+        branch: targetBranch,
+        isCloned: false,
+        message: `Local workspace ready at ${workspaceDir}`
+      };
+    }
+
+    const hasGit = fs.existsSync(path.join(workspaceDir, '.git'));
+    let authUrl = repoUrl;
+    const effectiveToken = token || agent?.repository?.gitToken;
+    if (effectiveToken && repoUrl.startsWith('https://')) {
+      const clean = repoUrl.replace('https://', '');
+      authUrl = `https://${effectiveToken}@${clean}`;
+    }
+
+    try {
+      if (!hasGit) {
+        // Clone into the dedicated agent workspace directory
+        let cloneRes = await TerminalExecutionService.execute(
+          `git clone --branch ${targetBranch} "${authUrl}" .`,
+          { cwd: workspaceDir, timeout: 60000 }
+        );
+
+        if (!cloneRes.success) {
+          cloneRes = await TerminalExecutionService.execute(
+            `git clone "${authUrl}" .`,
+            { cwd: workspaceDir, timeout: 60000 }
+          );
+        }
+
+        if (!cloneRes.success) {
+          return {
+            success: false,
+            workspacePath: workspaceDir,
+            branch: targetBranch,
+            isCloned: false,
+            message: `Git clone failed: ${cloneRes.stderr || cloneRes.error || 'Could not clone repository'}`,
+            error: cloneRes.stderr
+          };
+        }
+      } else {
+        // Already cloned: fetch and pull latest
+        await TerminalExecutionService.execute(`git fetch origin`, { cwd: workspaceDir, timeout: 15000 });
+        await TerminalExecutionService.execute(`git checkout ${targetBranch}`, { cwd: workspaceDir, timeout: 10000 });
+        await TerminalExecutionService.execute(`git pull origin ${targetBranch}`, { cwd: workspaceDir, timeout: 20000 });
+      }
+
+      // Auto-detect tech stack from project files
+      let detectedStack = '';
+      const pkgPath = path.join(workspaceDir, 'package.json');
+      if (fs.existsSync(pkgPath)) {
+        try {
+          const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+          const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+          const tags: string[] = [];
+          if (deps['react-native'] || deps['expo']) tags.push('React Native (Mobile)');
+          else if (deps['react']) tags.push('React');
+          if (deps['vite']) tags.push('Vite');
+          if (deps['next']) tags.push('Next.js');
+          if (deps['typescript']) tags.push('TypeScript');
+          if (deps['express']) tags.push('Express');
+          if (deps['prisma']) tags.push('Prisma');
+          if (deps['tailwindcss']) tags.push('Tailwind CSS');
+          detectedStack = tags.join(', ') || 'Node.js, TypeScript';
+        } catch {}
+      } else if (fs.existsSync(path.join(workspaceDir, 'pubspec.yaml'))) {
+        detectedStack = 'Flutter (Mobile), Dart';
+      } else if (fs.existsSync(path.join(workspaceDir, 'requirements.txt')) || fs.existsSync(path.join(workspaceDir, 'pyproject.toml'))) {
+        detectedStack = 'Python, AI/Data Engineering';
+      }
+
+      const activeBranch = await this.getCurrentBranch(workspaceDir);
+
+      return {
+        success: true,
+        workspacePath: workspaceDir,
+        branch: activeBranch,
+        isCloned: true,
+        techStack: detectedStack,
+        message: `Workspace synchronized for repository '${agent?.repository?.repositoryName || 'project'}' at ${workspaceDir} on branch '${activeBranch}'`
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        workspacePath: workspaceDir,
+        branch: targetBranch,
+        isCloned: hasGit,
+        message: `Workspace sync error: ${err.message}`,
+        error: err.message
+      };
+    }
   }
 
   /**

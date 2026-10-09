@@ -181,7 +181,7 @@ export class ExecutionEngine extends EventEmitter {
       orderBy: { stepNumber: 'asc' }
     });
 
-    const workspaceRoot = TerminalExecutionService.getWorkspaceRoot();
+    const workspaceRoot = TerminalExecutionService.getAgentWorkspace(agent);
     const execConfig = agent.executionConfig || {
       mode: 'autonomous',
       requireApprovalBeforeChanges: false,
@@ -194,10 +194,18 @@ export class ExecutionEngine extends EventEmitter {
       // STEP 1: Verify Configuration & Security
       const s1 = steps[0];
       await this.updateStep(s1.id, executionId, 'IN_PROGRESS');
-      await this.addLog(executionId, 'info', 'Step 1', `[${agent.name}] Initializing execution in workspace: ${workspaceRoot}`);
+      await this.addLog(executionId, 'info', 'Step 1', `[${agent.name} (${agent.agentType})] Initializing execution in isolated workspace: ${workspaceRoot}`);
       await this.addLog(executionId, 'info', 'Step 1', `Security policy verified. Blocked patterns: rm -rf /, shutdown, mkfs`);
-      options.onProgress?.(`✔ [Step 1: Configuration] Security rules and workspace verified (${workspaceRoot})\n`);
-      await this.updateStep(s1.id, executionId, 'COMPLETED', `Configuration & security verified for workspace ${workspaceRoot}.`);
+      options.onProgress?.(`✔ [Step 1: Configuration] Agent workspace: ${path.basename(workspaceRoot)} (Isolated from AI-hub platform)\n`);
+
+      // Ensure client project workspace is cloned and synced
+      const gitToken = agent.repository?.gitToken || agent.mcpConfig?.apiKey || process.env.GITHUB_TOKEN;
+      const workspaceSync = await gitService.ensureWorkspace(agent, gitToken);
+      if (workspaceSync.isCloned) {
+        await this.addLog(executionId, 'success', 'Workspace Sync', workspaceSync.message);
+        options.onProgress?.(`✔ [Workspace Sync] Remote repository synchronized on branch '${workspaceSync.branch}'\n`);
+      }
+      await this.updateStep(s1.id, executionId, 'COMPLETED', `Isolated workspace verified for ${path.basename(workspaceRoot)}.`);
 
       // STEP 2: Verify Repository & Dynamic Branch
       const s2 = steps[1];
@@ -205,8 +213,8 @@ export class ExecutionEngine extends EventEmitter {
       const currentBranch = await gitService.getCurrentBranch(workspaceRoot);
       const repoUrl = agent.repository?.repositoryUrl;
 
-      await this.addLog(executionId, 'info', 'Step 2', `Active Git branch detected: '${currentBranch}'. Remote: ${repoUrl || 'origin'}`);
-      options.onProgress?.(`✔ [Step 2: Repository] Active branch: '${currentBranch}'\n`);
+      await this.addLog(executionId, 'info', 'Step 2', `Active Git branch detected: '${currentBranch}'. Remote: ${repoUrl || 'local workspace'}`);
+      options.onProgress?.(`✔ [Step 2: Repository] Active branch: '${currentBranch}' in ${path.basename(workspaceRoot)}\n`);
 
       if (repoUrl && !repoUrl.includes('demo') && !repoUrl.includes('example.com')) {
         const testRes = await gitService.testConnection(repoUrl, 'token', agent.repository?.gitToken);
@@ -324,7 +332,7 @@ export class ExecutionEngine extends EventEmitter {
 
     const s5 = steps[4];
     const s6 = steps[5];
-    const workspaceRoot = TerminalExecutionService.getWorkspaceRoot();
+    const workspaceRoot = TerminalExecutionService.getAgentWorkspace(agent);
 
     await this.updateStep(s5.id, executionId, 'COMPLETED');
     await this.updateStep(s6.id, executionId, 'IN_PROGRESS');
@@ -463,7 +471,7 @@ export class ExecutionEngine extends EventEmitter {
     });
 
     const s7 = steps[6];
-    const workspaceRoot = TerminalExecutionService.getWorkspaceRoot();
+    const workspaceRoot = TerminalExecutionService.getAgentWorkspace(agent);
     await this.updateStep(s7.id, executionId, 'IN_PROGRESS');
 
     const testConfig = agent.testingConfig || {
@@ -584,7 +592,7 @@ export class ExecutionEngine extends EventEmitter {
 
     const s8 = steps[7];
     const s9 = steps[8];
-    const workspaceRoot = TerminalExecutionService.getWorkspaceRoot();
+    const workspaceRoot = TerminalExecutionService.getAgentWorkspace(agent);
 
     await prisma.agentExecution.update({
       where: { id: executionId },

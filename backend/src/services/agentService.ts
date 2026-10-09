@@ -1,6 +1,58 @@
 import { prisma } from '../database/db.js';
 import type { CreateAgentDTO, UpdateAgentDTO } from '../types/shared.js';
 import { auditService } from './auditService.js';
+import { gitService } from '../git/GitService.js';
+
+export function getDeveloperRoleDefaults(agentType: string) {
+  const normalized = (agentType || '').toLowerCase();
+
+  if (normalized.includes('qa') || normalized.includes('test') || normalized.includes('quality')) {
+    return {
+      systemInstructions: `You are an elite QA & Test Automation Engineer. Your primary mission is software quality, test coverage, edge-case verification, and regression prevention. When given a task or inspecting code, you analyze requirements, write robust unit and integration tests (using Jest, Vitest, Cypress, or Playwright), verify assertions, run the test runner, and report any discovered defects or bugs.`,
+      codingStandards: `Write comprehensive test suites with high statement and branch coverage. Mock external network/database calls safely. Include both happy-path and edge-case failure tests.`,
+      architectureRules: `Test-driven development (TDD), isolation of test suites, clean fixtures, and repeatable assertions.`
+    };
+  }
+
+  if (normalized.includes('mobile')) {
+    return {
+      systemInstructions: `You are a Senior Mobile Application Developer specializing in React Native, Flutter, iOS, and Android development. You design and implement fluid mobile user interfaces, responsive touch interactions, navigation stacks (React Navigation), state management, device hardware APIs, and offline data synchronization.`,
+      codingStandards: `Mobile responsiveness across screen sizes, 60fps UI performance, platform-specific adaptations (iOS vs Android), safe area insets, and offline-first state handling.`,
+      architectureRules: `Component-driven mobile architecture, centralized navigation, and type-safe state stores.`
+    };
+  }
+
+  if (normalized.includes('ai') || normalized.includes('ml') || normalized.includes('machine learning')) {
+    return {
+      systemInstructions: `You are a Senior AI & Machine Learning Systems Engineer. You build Large Language Model (LLM) integrations, prompt workflows, Retrieval-Augmented Generation (RAG) pipelines, vector database search, embeddings, and intelligent agent features.`,
+      codingStandards: `Deterministic fallback handling for AI responses, token consumption optimization, structured output validation (Zod/JSON schema), and secure credential handling.`,
+      architectureRules: `Decoupled AI service providers, asynchronous streaming, vector retrieval indexing, and prompt versioning.`
+    };
+  }
+
+  if (normalized.includes('frontend')) {
+    return {
+      systemInstructions: `You are a Senior Frontend Engineer. You specialize in modern web interfaces using React, TypeScript, Tailwind CSS, Vite, and Next.js. You create accessible, responsive components, smooth animations, and optimized state management.`,
+      codingStandards: `Accessible semantic HTML, responsive design, component reusability, strict TypeScript types, and lightweight dependencies.`,
+      architectureRules: `Atomic component design, custom hooks for business logic, optimized bundle splitting, and unidirectional data flow.`
+    };
+  }
+
+  if (normalized.includes('backend')) {
+    return {
+      systemInstructions: `You are a Senior Backend Engineer. You specialize in scalable REST/GraphQL APIs, databases (PostgreSQL, Prisma, SQLite, Redis), secure authentication, and high-performance server logic.`,
+      codingStandards: `Input validation schemas, idempotent endpoints, centralized error handling, connection pooling, and secure token guards.`,
+      architectureRules: `Layered service-repository pattern, decoupled routing, dependency injection, and ACID transactions.`
+    };
+  }
+
+  // Default: Full Stack Developer
+  return {
+    systemInstructions: `You are an autonomous Senior Full Stack Developer. You have end-to-end expertise across frontend UI, backend APIs, databases, automated tests, and deployment pipelines. You write clean, production-grade code and verify changes thoroughly.`,
+    codingStandards: `Clean code, strict types, comprehensive error handling, modular services, and automated test verification.`,
+    architectureRules: `Decoupled multi-tier architecture, scalable service layers, clean separation of concerns, and reproducible builds.`
+  };
+}
 
 export class AgentService {
   /**
@@ -130,6 +182,22 @@ export class AgentService {
   }
 
   async createAgent(userId: string, data: CreateAgentDTO) {
+    let repoUrl = (data.repository?.repositoryUrl || '').trim();
+    let repoOwner = (data.repository?.repositoryOwner || '').trim();
+    let repoName = (data.repository?.repositoryName || '').trim();
+    let branch = (data.repository?.branch || 'main').trim();
+
+    if (repoUrl) {
+      const cleanUrl = repoUrl.replace(/\.git$/, '');
+      const match = cleanUrl.match(/github\.com[/:]([^/]+)\/([^/]+)/i);
+      if (match) {
+        if (!repoOwner) repoOwner = match[1];
+        if (!repoName) repoName = match[2];
+      }
+    }
+
+    const roleDefaults = getDeveloperRoleDefaults(data.agentType || 'Full Stack Developer');
+
     const agent = await prisma.agent.create({
       data: {
         userId,
@@ -141,27 +209,17 @@ export class AgentService {
         status: data.status || 'IDLE',
         isDemo: data.isDemo ?? false,
 
-        repository: data.repository ? {
+        repository: {
           create: {
-            provider: data.repository.provider || 'github',
-            repositoryUrl: data.repository.repositoryUrl || '',
-            repositoryOwner: data.repository.repositoryOwner || '',
-            repositoryName: data.repository.repositoryName || '',
-            branch: data.repository.branch || 'main',
-            authMethod: data.repository.authMethod || 'token',
-            gitToken: (data.repository as any).gitToken || null,
-            sshKey: (data.repository as any).sshKey || null,
-            status: data.repository.repositoryUrl ? 'connected' : 'not_configured'
-          }
-        } : {
-          create: {
-            provider: 'github',
-            repositoryUrl: '',
-            repositoryOwner: '',
-            repositoryName: '',
-            branch: 'main',
-            authMethod: 'token',
-            status: 'not_configured'
+            provider: data.repository?.provider || 'github',
+            repositoryUrl: repoUrl,
+            repositoryOwner: repoOwner,
+            repositoryName: repoName,
+            branch,
+            authMethod: data.repository?.authMethod || 'token',
+            gitToken: (data.repository as any)?.gitToken || null,
+            sshKey: (data.repository as any)?.sshKey || null,
+            status: repoUrl ? 'connected' : 'not_configured'
           }
         },
 
@@ -199,19 +257,15 @@ export class AgentService {
           }
         },
 
-        instruction: data.instruction ? {
+        instruction: {
           create: {
-            systemInstructions: data.instruction.systemInstructions || '',
-            projectKnowledge: data.instruction.projectKnowledge || '',
-            technologyStack: data.instruction.technologyStack || '',
-            businessRules: data.instruction.businessRules || '',
-            codingStandards: data.instruction.codingStandards || '',
-            architectureRules: data.instruction.architectureRules || '',
-            doNotModifyRules: data.instruction.doNotModifyRules || ''
-          }
-        } : {
-          create: {
-            systemInstructions: 'You are an autonomous AI coding agent designed to analyze codebases, plan changes, edit files, and run tests.'
+            systemInstructions: data.instruction?.systemInstructions || roleDefaults.systemInstructions,
+            projectKnowledge: data.instruction?.projectKnowledge || '',
+            technologyStack: data.instruction?.technologyStack || 'TypeScript, Node.js, React',
+            businessRules: data.instruction?.businessRules || '',
+            codingStandards: data.instruction?.codingStandards || roleDefaults.codingStandards,
+            architectureRules: data.instruction?.architectureRules || roleDefaults.architectureRules,
+            doNotModifyRules: data.instruction?.doNotModifyRules || '.env*, package-lock.json'
           }
         },
 
@@ -321,6 +375,24 @@ export class AgentService {
       details: `Created agent ${agent.name} (${agent.agentType})`
     });
 
+    // Auto-clone and sync workspace for the repository
+    if (repoUrl && !repoUrl.includes('example.com') && !repoUrl.includes('demo')) {
+      gitService.ensureWorkspace({
+        id: agent.id,
+        repository: { repositoryUrl: repoUrl, repositoryName: repoName, branch }
+      }, (data.repository as any)?.gitToken).then(async res => {
+        if (res.techStack) {
+          await prisma.agentInstruction.upsert({
+            where: { agentId: agent.id },
+            create: { agentId: agent.id, technologyStack: res.techStack },
+            update: { technologyStack: res.techStack }
+          });
+        }
+      }).catch(err => {
+        console.warn(`[Auto-Workspace] ${err.message}`);
+      });
+    }
+
     return this.getAgentById(agent.id);
   }
 
@@ -346,32 +418,69 @@ export class AgentService {
 
     // Update Repository
     if (data.repository) {
-      await prisma.agentRepository.upsert({
+      let repoUrl = (data.repository.repositoryUrl || '').trim();
+      let repoOwner = (data.repository.repositoryOwner || '').trim();
+      let repoName = (data.repository.repositoryName || '').trim();
+      let branch = (data.repository.branch || 'main').trim();
+
+      // Automatically parse owner and repo name from GitHub URL
+      if (repoUrl) {
+        const cleanUrl = repoUrl.replace(/\.git$/, '');
+        const match = cleanUrl.match(/github\.com[/:]([^/]+)\/([^/]+)/i);
+        if (match) {
+          if (!repoOwner || repoOwner === 'company' || repoOwner === 'workspace') {
+            repoOwner = match[1];
+          }
+          if (!repoName || repoName === 'core-service' || repoName === 'project-monorepo') {
+            repoName = match[2];
+          }
+        }
+      }
+
+      const updatedRepo = await prisma.agentRepository.upsert({
         where: { agentId },
         create: {
           agentId,
           provider: data.repository.provider || 'github',
-          repositoryUrl: data.repository.repositoryUrl || '',
-          repositoryOwner: data.repository.repositoryOwner || '',
-          repositoryName: data.repository.repositoryName || '',
-          branch: data.repository.branch || 'main',
+          repositoryUrl: repoUrl,
+          repositoryOwner: repoOwner,
+          repositoryName: repoName,
+          branch,
           authMethod: data.repository.authMethod || 'token',
           gitToken: (data.repository as any).gitToken || null,
           sshKey: (data.repository as any).sshKey || null,
-          status: data.repository.repositoryUrl ? 'connected' : 'not_configured'
+          status: repoUrl ? 'connected' : 'not_configured'
         },
         update: {
           provider: data.repository.provider ?? undefined,
-          repositoryUrl: data.repository.repositoryUrl ?? undefined,
-          repositoryOwner: data.repository.repositoryOwner ?? undefined,
-          repositoryName: data.repository.repositoryName ?? undefined,
-          branch: data.repository.branch ?? undefined,
+          repositoryUrl: repoUrl || undefined,
+          repositoryOwner: repoOwner || undefined,
+          repositoryName: repoName || undefined,
+          branch: branch || undefined,
           authMethod: data.repository.authMethod ?? undefined,
           gitToken: (data.repository as any).gitToken !== undefined ? (data.repository as any).gitToken : undefined,
           sshKey: (data.repository as any).sshKey !== undefined ? (data.repository as any).sshKey : undefined,
-          status: data.repository.repositoryUrl ? 'connected' : undefined
+          status: repoUrl ? 'connected' : undefined
         }
       });
+
+      // Automatically clone & sync dedicated workspace in background (isolated from AI-hub platform)
+      if (repoUrl && !repoUrl.includes('example.com') && !repoUrl.includes('demo')) {
+        gitService.ensureWorkspace({
+          id: agentId,
+          repository: updatedRepo
+        }, (data.repository as any)?.gitToken).then(async res => {
+          if (res.techStack) {
+            await prisma.agentInstruction.upsert({
+              where: { agentId },
+              create: { agentId, technologyStack: res.techStack },
+              update: { technologyStack: res.techStack }
+            });
+          }
+        }).catch(err => {
+          console.warn(`[Auto-Workspace] Notice: ${err.message}`);
+        });
+      }
     }
 
     // Update AI Config

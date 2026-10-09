@@ -9,3 +9,4 @@ build
 backend/prisma/*.db
 backend/prisma/*.db-journal
 *.tsbuildinfo
+workspaces/

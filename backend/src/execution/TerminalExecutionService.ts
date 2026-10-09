@@ -1,6 +1,7 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
+import fs from 'fs';
 
 const execAsync = promisify(exec);
 
@@ -16,7 +17,7 @@ export interface CommandExecutionResult {
 
 export class TerminalExecutionService {
   /**
-   * Resolve the authorized root workspace directory
+   * Resolve the AI Hub root directory (platform dashboard)
    */
   static getWorkspaceRoot(): string {
     const cwd = process.cwd();
@@ -24,6 +25,50 @@ export class TerminalExecutionService {
       return path.resolve(cwd, '..');
     }
     return cwd;
+  }
+
+  /**
+   * Resolve the dedicated, isolated workspace directory for a specific agent and its Git repository.
+   * Keeps client project repositories (e.g. HealthcareApp, mobile app repos) completely separated from AI Hub!
+   */
+  static getAgentWorkspace(agent?: { id?: string; name?: string; repository?: { repositoryName?: string; repositoryUrl?: string } | null } | null): string {
+    const hubRoot = this.getWorkspaceRoot();
+    let folderName = '';
+
+    if (agent?.repository?.repositoryUrl) {
+      const url = agent.repository.repositoryUrl.trim().replace(/\.git$/, '');
+      const match = url.match(/github\.com[/:]([^/]+)\/([^/]+)/i);
+      if (match && match[2] && match[2] !== 'AI-hub' && match[2] !== 'AI hub') {
+        folderName = match[2];
+      } else {
+        const parts = url.split('/');
+        const extracted = parts[parts.length - 1];
+        if (extracted && extracted !== 'AI-hub' && extracted !== 'AI hub') {
+          folderName = extracted;
+        }
+      }
+    }
+
+    if (!folderName && agent?.repository?.repositoryName && agent.repository.repositoryName !== 'core-service' && agent.repository.repositoryName !== 'AI-hub') {
+      folderName = agent.repository.repositoryName;
+    }
+
+    if (!folderName && agent?.id) {
+      folderName = `agent_${agent.id.slice(0, 8)}`;
+    }
+
+    if (!folderName) {
+      folderName = 'default_project';
+    }
+
+    const sanitized = folderName.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const agentWorkspacePath = path.join(hubRoot, 'workspaces', sanitized);
+
+    if (!fs.existsSync(agentWorkspacePath)) {
+      fs.mkdirSync(agentWorkspacePath, { recursive: true });
+    }
+
+    return agentWorkspacePath;
   }
 
   /**
