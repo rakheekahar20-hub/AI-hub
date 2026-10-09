@@ -364,14 +364,14 @@ export class ExecutionEngine extends EventEmitter {
       }
 
       // Check doNotModifyRules
-      const protectedRules = (agent.instruction?.doNotModifyRules || '.env*, package-lock.json')
+      const protectedRules = (agent.instruction?.doNotModifyRules || '.env*, package-lock.json, *package.json')
         .split(',')
         .map((r: string) => r.trim())
         .filter(Boolean);
 
       const isProtected = protectedRules.some((rule: string) => {
         if (rule.endsWith('*')) return cleanPath.startsWith(rule.slice(0, -1));
-        return cleanPath === rule || cleanPath.endsWith(rule);
+        return cleanPath === rule || cleanPath.endsWith(rule) || cleanPath.endsWith('package.json');
       });
 
       if (isProtected) {
@@ -387,7 +387,23 @@ export class ExecutionEngine extends EventEmitter {
       }
 
       // Write modification safely to disk
-      const modifiedContent = change.modifiedContent || change.originalContent || '';
+      let modifiedContent = change.modifiedContent || change.originalContent || '';
+
+      // If modifying a package.json, preserve existing critical scripts and dependencies
+      if (cleanPath.endsWith('package.json') && originalContent && modifiedContent) {
+        try {
+          const origJson = JSON.parse(originalContent);
+          const newJson = JSON.parse(modifiedContent);
+          const mergedJson = {
+            ...origJson,
+            ...newJson,
+            scripts: { ...(origJson.scripts || {}), ...(newJson.scripts || {}) },
+            dependencies: { ...(origJson.dependencies || {}), ...(newJson.dependencies || {}) },
+            devDependencies: { ...(origJson.devDependencies || {}), ...(newJson.devDependencies || {}) }
+          };
+          modifiedContent = JSON.stringify(mergedJson, null, 2);
+        } catch {}
+      }
       if (modifiedContent && change.changeType !== 'deleted') {
         try {
           fs.mkdirSync(path.dirname(absPath), { recursive: true });
