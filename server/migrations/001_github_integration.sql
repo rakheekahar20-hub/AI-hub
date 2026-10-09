@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS github_integrations (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    access_text VARCHAR(255) NOT NULL,
+    repository_data JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

@@ -60,6 +60,21 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({
   const [aiTesting, setAiTesting] = useState(false);
   const [aiTestResult, setAiTestResult] = useState<TestConnectionResult | null>(null);
 
+  // GitHub MCP Server state
+  const [mcpServerUrl, setMcpServerUrl] = useState<string>('npx -y @modelcontextprotocol/server-github');
+  const [mcpAuthMethod, setMcpAuthMethod] = useState<'pat' | 'oauth'>('pat');
+  const [mcpApiKey, setMcpApiKey] = useState<string>('');
+  const [mcpScopes, setMcpScopes] = useState<string>('repo,read:user');
+  const [mcpStatus, setMcpStatus] = useState<string>('not_connected');
+  const [mcpDiscoveredTools, setMcpDiscoveredTools] = useState<any[]>([]);
+  const [mcpUser, setMcpUser] = useState<any>(null);
+  const [mcpLoading, setMcpLoading] = useState(false);
+  const [mcpTesting, setMcpTesting] = useState(false);
+  const [mcpSuccessMessage, setMcpSuccessMessage] = useState<string | null>(null);
+  const [mcpErrorMessage, setMcpErrorMessage] = useState<string | null>(null);
+  const [showMcpKey, setShowMcpKey] = useState(false);
+  const [mcpLastConnectedAt, setMcpLastConnectedAt] = useState<string | null>(null);
+
   // Initialize form from existing agent
   const [formData, setFormData] = useState<UpdateAgentDTO>({});
 
@@ -82,8 +97,27 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({
         testingConfig: agent.testingConfig ? { ...agent.testingConfig } : undefined,
         deploymentConfig: agent.deploymentConfig ? { ...agent.deploymentConfig } : undefined,
         webhooks: agent.webhooks ? [...agent.webhooks] : [],
-        securityConfig: agent.securityConfig ? { ...agent.securityConfig } : undefined
+        securityConfig: agent.securityConfig ? { ...agent.securityConfig } : undefined,
+        mcpConfig: agent.mcpConfig ? { ...agent.mcpConfig } : undefined
       });
+
+      if (agent.mcpConfig) {
+        setMcpServerUrl(agent.mcpConfig.serverUrl || 'npx -y @modelcontextprotocol/server-github');
+        setMcpAuthMethod((agent.mcpConfig.authMethod as any) || 'pat');
+        setMcpScopes(agent.mcpConfig.scopes || 'repo,read:user');
+        setMcpStatus(agent.mcpConfig.status || 'not_connected');
+        setMcpLastConnectedAt(agent.mcpConfig.lastConnectedAt || null);
+        if (agent.mcpConfig.discoveredTools) {
+          try {
+            const parsed = typeof agent.mcpConfig.discoveredTools === 'string'
+              ? JSON.parse(agent.mcpConfig.discoveredTools)
+              : agent.mcpConfig.discoveredTools;
+            setMcpDiscoveredTools(Array.isArray(parsed) ? parsed : []);
+          } catch {
+            setMcpDiscoveredTools([]);
+          }
+        }
+      }
     }
   }, [agent, isOpen]);
 
@@ -94,6 +128,22 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({
         .then(setHistory)
         .catch(console.error)
         .finally(() => setLoadingHistory(false));
+    }
+
+    if (activeTab === 'mcp' && agent?.id) {
+      agentService.getGitHubMCPStatus(agent.id)
+        .then((res: any) => {
+          if (res?.config) {
+            setMcpStatus(res.config.status || 'not_connected');
+            if (res.config.serverUrl) setMcpServerUrl(res.config.serverUrl);
+            if (res.config.authMethod) setMcpAuthMethod(res.config.authMethod);
+            if (res.config.scopes) setMcpScopes(res.config.scopes);
+            if (res.config.discoveredTools) setMcpDiscoveredTools(res.config.discoveredTools);
+            if (res.config.lastConnectedAt) setMcpLastConnectedAt(res.config.lastConnectedAt);
+            if (res.config.errorMessage) setMcpErrorMessage(res.config.errorMessage);
+          }
+        })
+        .catch(() => {});
     }
   }, [activeTab, agent]);
 
@@ -112,7 +162,8 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({
     { id: 'deployment', label: '10. Deployment', icon: Rocket },
     { id: 'webhooks', label: '11. Webhooks', icon: Webhook },
     { id: 'security', label: '12. Security', icon: Lock },
-    { id: 'history', label: '13. History', icon: Clock }
+    { id: 'history', label: '13. History', icon: Clock },
+    { id: 'mcp', label: '14. GitHub MCP', icon: Network }
   ];
 
   const handleReset = () => {
