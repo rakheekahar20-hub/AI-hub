@@ -1,3 +1,5 @@
-      <a href="#contact" className="cta-button">
-        Contact Us
-      </a>
+return (
+  <nav>
+    <button>Contact Us</button>
+  </nav>
+);
