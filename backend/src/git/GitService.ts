@@ -293,6 +293,13 @@ export class GitService {
     const cwd = this.getCwd(customCwd);
     const resolvedBranch = branch || await this.getCurrentBranch(cwd);
 
+    // Ensure Git author identity is configured in this repository
+    const authorRes = await TerminalExecutionService.execute('git config user.email', { cwd });
+    if (!authorRes.stdout || !authorRes.stdout.trim()) {
+      await TerminalExecutionService.execute('git config user.name "rakheekahar20-hub"', { cwd });
+      await TerminalExecutionService.execute('git config user.email "rakheekahar2002@gmail.com"', { cwd });
+    }
+
     // Stage changes (respecting .gitignore)
     const addResult = await TerminalExecutionService.execute('git add .', { cwd });
     if (!addResult.success) {
@@ -318,15 +325,19 @@ export class GitService {
     const safeMsg = message.replace(/"/g, '\\"');
     const commitResult = await TerminalExecutionService.execute(`git commit -m "${safeMsg}"`, { cwd });
 
+    if (!commitResult.success) {
+      throw new Error(`Git commit failed: ${commitResult.stderr || commitResult.stdout}`);
+    }
+
     // Retrieve new commit hash
     const hashResult = await TerminalExecutionService.execute('git rev-parse --short HEAD', { cwd });
     const commitHash = hashResult.success ? hashResult.stdout.trim() : 'HEAD';
 
     return {
-      success: commitResult.success,
+      success: true,
       commitHash,
       branch: resolvedBranch,
-      message: commitResult.success ? `Created commit [${commitHash}] on ${resolvedBranch}` : 'Commit encountered an issue',
+      message: `Created commit [${commitHash}] on ${resolvedBranch}`,
       output: commitResult.stdout || commitResult.stderr
     };
   }

@@ -708,9 +708,15 @@ export class ExecutionEngine extends EventEmitter {
       options.onProgress?.(`✔ Git Push: ${pushResult.message}\n`);
       await this.updateStep(s8.id, executionId, 'COMPLETED', `Committed [${commitResult.commitHash}] and pushed to origin/${branch}`);
     } else {
-      await this.addLog(executionId, 'warn', 'Git Push', pushResult.message, pushResult.output);
-      options.onProgress?.(`⚠️ Git Push Note: ${pushResult.message}\n`);
-      await this.updateStep(s8.id, executionId, 'COMPLETED', `Committed [${commitResult.commitHash}]. Push note: ${pushResult.message}`);
+      await this.addLog(executionId, 'error', 'Git Push', pushResult.message, pushResult.output);
+      options.onProgress?.(`❌ Git Push failed: ${pushResult.message}\n`);
+      await this.updateStep(s8.id, executionId, 'FAILED', `Push failed: ${pushResult.message}`);
+      await prisma.agentExecution.update({
+        where: { id: executionId },
+        data: { status: 'FAILED', errorMessage: `Git Push failed: ${pushResult.message}` }
+      });
+      await this.finishExecution(executionId, agent.id, `Execution stopped: Git push failed: ${pushResult.message}`, true);
+      return;
     }
 
     await prisma.agentExecution.update({
