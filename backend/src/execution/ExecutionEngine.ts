@@ -351,6 +351,21 @@ export class ExecutionEngine extends EventEmitter {
       isDemo
     });
 
+    // Handle revert / restore request if explicitly prompted
+    const lowerPrompt = prompt.toLowerCase();
+    if (lowerPrompt.includes('revert') || lowerPrompt.includes('restore') || lowerPrompt.includes('clean state')) {
+      const commitMatch = prompt.match(/\b([0-9a-f]{7,40})\b/i);
+      const targetCommit = commitMatch ? commitMatch[1] : 'HEAD';
+      await this.addLog(executionId, 'info', 'Step 6', `Restoring workspace files from commit [${targetCommit}]...`);
+      options.onProgress?.(`🔄 Restoring workspace files from commit [${targetCommit}]...\n`);
+      if (commitMatch) {
+        await TerminalExecutionService.execute(`git checkout ${targetCommit} -- src`, { cwd: workspaceRoot });
+      } else {
+        await TerminalExecutionService.execute(`git checkout HEAD -- src`, { cwd: workspaceRoot });
+      }
+      await TerminalExecutionService.execute(`git clean -fd src`, { cwd: workspaceRoot });
+    }
+
     const generatedChanges = await aiProvider.generateCodeChanges({
       prompt,
       systemInstructions: agent.instruction?.systemInstructions || '',
@@ -530,10 +545,10 @@ export class ExecutionEngine extends EventEmitter {
         const errorOutput = buildStderr || buildStdout;
         let fixAttempted = false;
 
-        // Case 1: Missing packages (Cannot find module 'xyz')
-        const missingModuleMatches = Array.from(errorOutput.matchAll(/Cannot find module ['"]([^'"/]+)['"]/g));
+        // Case 1: Missing packages (Cannot find module 'xyz' or '@scope/xyz')
+        const missingModuleMatches = Array.from(errorOutput.matchAll(/Cannot find module ['"](@?[a-zA-Z0-9_.-]+(?:\/[a-zA-Z0-9_.-]+)?)['"]/g));
         if (missingModuleMatches.length > 0) {
-          const missingPkgs = Array.from(new Set(missingModuleMatches.map(m => m[1])));
+          const missingPkgs = Array.from(new Set(missingModuleMatches.map(m => m[1]))).filter(p => !p.startsWith('@/'));
           for (const pkg of missingPkgs) {
             await this.addLog(executionId, 'info', 'Build Runner', `Auto-installing missing dependency: ${pkg}`);
             options.onProgress?.(`📦 Installing missing dependency: ${pkg}...\n`);
@@ -542,7 +557,23 @@ export class ExecutionEngine extends EventEmitter {
           }
         }
 
-        // Case 2: Unused React or unused variable TS6133 errors under strict noUnusedLocals
+        // Case 2: Missing local alias '@/lib/utils' (common in shadcn-like components)
+        if (errorOutput.includes("Cannot find module '@/lib/utils'")) {
+          const filesWithAlias = Array.from(errorOutput.matchAll(/([^\n:]+\.tsx?):\d+:\d+ - error TS2307: Cannot find module '@\/lib\/utils'/g));
+          for (const f of filesWithAlias) {
+            const relPath = f[1].trim();
+            const fullPath = path.isAbsolute(relPath) ? relPath : path.join(workspaceRoot, relPath);
+            if (fs.existsSync(fullPath)) {
+              let content = fs.readFileSync(fullPath, 'utf8');
+              content = content.replace(/import\s+{\s*cn\s*}\s*from\s*['"]@\/lib\/utils['"];?\r?\n?/g, 'const cn = (...classes: any[]) => classes.filter(Boolean).join(" ");\n');
+              fs.writeFileSync(fullPath, content, 'utf8');
+              fixAttempted = true;
+              await this.addLog(executionId, 'info', 'Build Runner', `Auto-inlined cn helper in ${relPath}`);
+            }
+          }
+        }
+
+        // Case 3: Unused React or unused variable TS6133 errors under strict noUnusedLocals
         const unusedMatches = Array.from(errorOutput.matchAll(/([^\n:]+\.tsx?):\d+:\d+ - error TS6133: ['"]([^'"]+)['"] is declared but its value is never read/g));
         if (unusedMatches.length > 0) {
           for (const match of unusedMatches) {
