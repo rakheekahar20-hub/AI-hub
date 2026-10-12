@@ -55,7 +55,7 @@ export class GitService {
 
     const hasGit = fs.existsSync(path.join(workspaceDir, '.git'));
     let authUrl = repoUrl;
-    const effectiveToken = token || agent?.repository?.gitToken;
+    const effectiveToken = token || agent?.repository?.gitToken || agent?.mcpConfig?.apiKey;
     if (effectiveToken && repoUrl.startsWith('https://')) {
       const clean = repoUrl.replace('https://', '');
       authUrl = `https://${effectiveToken}@${clean}`;
@@ -87,7 +87,10 @@ export class GitService {
           };
         }
       } else {
-        // Already cloned: fetch and pull latest
+        // Already cloned: set authenticated origin url, fetch and pull latest
+        if (effectiveToken && repoUrl.startsWith('https://')) {
+          await TerminalExecutionService.execute(`git remote set-url origin "${authUrl}"`, { cwd: workspaceDir, timeout: 5000 });
+        }
         await TerminalExecutionService.execute(`git fetch origin`, { cwd: workspaceDir, timeout: 15000 });
         await TerminalExecutionService.execute(`git checkout ${targetBranch}`, { cwd: workspaceDir, timeout: 10000 });
         await TerminalExecutionService.execute(`git pull origin ${targetBranch}`, { cwd: workspaceDir, timeout: 20000 });
@@ -334,7 +337,8 @@ export class GitService {
   async push(
     branch: string,
     isDemo: boolean = false,
-    customCwd?: string
+    customCwd?: string,
+    token?: string
   ): Promise<{ success: boolean; message: string; output: string; branch: string; error?: string }> {
     const cwd = this.getCwd(customCwd);
     const resolvedBranch = branch || await this.getCurrentBranch(cwd);
@@ -349,6 +353,16 @@ export class GitService {
         branch: resolvedBranch,
         error: 'MISSING_REMOTE'
       };
+    }
+
+    // Set authenticated remote URL if token provided
+    if (token) {
+      const getUrlRes = await TerminalExecutionService.execute('git remote get-url origin', { cwd });
+      if (getUrlRes.success && getUrlRes.stdout.trim().startsWith('https://')) {
+        const cleanUrl = getUrlRes.stdout.trim().replace(/https:\/\/[^@]+@/, 'https://');
+        const authUrl = cleanUrl.replace('https://', `https://${token}@`);
+        await TerminalExecutionService.execute(`git remote set-url origin "${authUrl}"`, { cwd });
+      }
     }
 
     // Real push

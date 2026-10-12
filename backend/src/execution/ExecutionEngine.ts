@@ -633,7 +633,8 @@ export class ExecutionEngine extends EventEmitter {
     options.onProgress?.(`✔ Commit created: [${commitResult.commitHash}] on '${branch}'\n`);
 
     await this.addLog(executionId, 'info', 'Step 8', `Pushing branch '${branch}' to remote origin...`);
-    const pushResult = await gitService.push(branch, isDemo, workspaceRoot);
+    const effectiveToken = agent.repository?.gitToken || agent.mcpConfig?.apiKey;
+    const pushResult = await gitService.push(branch, isDemo, workspaceRoot, effectiveToken);
 
     if (pushResult.success) {
       await this.addLog(executionId, 'success', 'Git Push', pushResult.message, pushResult.output);
