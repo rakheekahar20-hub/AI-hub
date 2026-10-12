@@ -13,7 +13,12 @@ export interface ProviderOptions {
 
 export class AIProviderFactory {
   static getProvider(options: ProviderOptions): AIProvider {
-    const rawKey = options.apiKey ||
+    let candidateKey = (options.apiKey || '').trim().replace(/^["']|["']$/g, '');
+    if (candidateKey.startsWith('ghp_') || candidateKey.startsWith('github_pat_') || candidateKey.startsWith('gho_')) {
+      candidateKey = '';
+    }
+
+    const rawKey = candidateKey ||
       process.env[`${options.provider.toUpperCase()}_API_KEY`] ||
       (options.provider === 'gemini' ? (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY) : '') ||
       (options.provider === 'openai' ? process.env.OPENAI_API_KEY : '') ||
