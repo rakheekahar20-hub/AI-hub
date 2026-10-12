@@ -33,6 +33,7 @@ import {
   Github,
   ExternalLink
 } from 'lucide-react';
+import { SkillSelector } from './SkillSelector';
 
 interface AgentSettingsModalProps {
   isOpen: boolean;
@@ -489,6 +490,38 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({
                   </div>
                 </div>
 
+                {/* Dynamic Skills & Tech Stack Section */}
+                <div className="pt-2 border-t border-[#232e3d]/60">
+                  <SkillSelector
+                    skills={
+                      formData.instruction?.technologyStack
+                        ? formData.instruction.technologyStack.split(',').map(s => s.trim()).filter(Boolean)
+                        : []
+                    }
+                    onChange={(newSkills) => {
+                      const currentInst = formData.instruction || {
+                        id: '',
+                        agentId: agent.id,
+                        systemInstructions: '',
+                        projectKnowledge: '',
+                        technologyStack: '',
+                        businessRules: '',
+                        codingStandards: '',
+                        architectureRules: '',
+                        doNotModifyRules: ''
+                      };
+                      setFormData({
+                        ...formData,
+                        instruction: {
+                          ...currentInst,
+                          technologyStack: newSkills.join(', ')
+                        }
+                      });
+                    }}
+                    currentRole={formData.agentType}
+                  />
+                </div>
+
                 <div className="pt-2">
                   <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-300">
                     <input
@@ -881,15 +914,34 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">Tech Stack</label>
-                  <input
-                    type="text"
-                    value={formData.instruction?.technologyStack || ''}
-                    onChange={e => setFormData({
-                      ...formData,
-                      instruction: { ...formData.instruction!, technologyStack: e.target.value }
-                    })}
-                    className="w-full px-3.5 py-2 bg-[#161d27] border border-[#232e3d] rounded-xl text-xs text-white"
+                  <SkillSelector
+                    label="Tech Stack"
+                    skills={
+                      formData.instruction?.technologyStack
+                        ? formData.instruction.technologyStack.split(',').map(s => s.trim()).filter(Boolean)
+                        : []
+                    }
+                    onChange={(newSkills) => {
+                      const currentInst = formData.instruction || {
+                        id: '',
+                        agentId: agent.id,
+                        systemInstructions: '',
+                        projectKnowledge: '',
+                        technologyStack: '',
+                        businessRules: '',
+                        codingStandards: '',
+                        architectureRules: '',
+                        doNotModifyRules: ''
+                      };
+                      setFormData({
+                        ...formData,
+                        instruction: {
+                          ...currentInst,
+                          technologyStack: newSkills.join(', ')
+                        }
+                      });
+                    }}
+                    currentRole={formData.agentType}
                   />
                 </div>
               </div>

@@ -267,7 +267,11 @@ export class ExecutionEngine extends EventEmitter {
         prompt,
         systemInstructions: agent.instruction?.systemInstructions || 'You are an autonomous AI coding agent.',
         technologyStack: agent.instruction?.technologyStack,
+        agentRole: agent.agentType,
         architectureRules: agent.instruction?.architectureRules,
+        businessRules: agent.instruction?.businessRules,
+        codingStandards: agent.instruction?.codingStandards,
+        doNotModifyRules: agent.instruction?.doNotModifyRules,
         repositoryContext: {
           owner: agent.repository?.repositoryOwner || 'workspace',
           name: agent.repository?.repositoryName || 'project',
@@ -369,7 +373,12 @@ export class ExecutionEngine extends EventEmitter {
     const generatedChanges = await aiProvider.generateCodeChanges({
       prompt,
       systemInstructions: agent.instruction?.systemInstructions || '',
-      technologyStack: agent.instruction?.technologyStack
+      technologyStack: agent.instruction?.technologyStack,
+      agentRole: agent.agentType,
+      architectureRules: agent.instruction?.architectureRules,
+      businessRules: agent.instruction?.businessRules,
+      codingStandards: agent.instruction?.codingStandards,
+      doNotModifyRules: agent.instruction?.doNotModifyRules
     }, existingPlan || { steps: [] });
 
     const savedFileChanges = [];

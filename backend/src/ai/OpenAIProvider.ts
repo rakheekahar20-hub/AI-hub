@@ -52,7 +52,7 @@ export class OpenAIProvider implements AIProvider {
             },
             {
               role: 'user',
-              content: `Create an implementation plan for: ${context.prompt}\nTech stack: ${context.technologyStack}`
+              content: `Create an implementation plan for: ${context.prompt}\nAgent Role: ${context.agentRole || 'Developer'}\nTech stack: ${context.technologyStack || 'TypeScript/Node.js'}\nStrictly confine planning to this role and tech stack. Do not plan modifications to unrelated files.`
             }
           ],
           response_format: { type: 'json_object' }
@@ -92,7 +92,7 @@ export class OpenAIProvider implements AIProvider {
             },
             {
               role: 'user',
-              content: `Implement changes for plan: ${JSON.stringify(plan)}\nPrompt: ${context.prompt}`
+              content: `Implement changes for plan: ${JSON.stringify(plan)}\nAgent Role: ${context.agentRole || 'Developer'}\nTech Stack: ${context.technologyStack || 'TypeScript, React'}\nStrictly limit modifications to files within your authorized role and tech stack. Do not alter unrelated files or project architecture.\nPrompt: ${context.prompt}`
             }
           ],
           response_format: { type: 'json_object' }
@@ -113,6 +113,7 @@ export class OpenAIProvider implements AIProvider {
     try {
       const systemPrompt = [
         context.systemInstructions || 'You are an expert AI software engineer assistant.',
+        context.agentRole ? `Agent Role: ${context.agentRole}` : '',
         context.technologyStack ? `Technology Stack: ${context.technologyStack}` : '',
         context.codingStandards ? `Coding Standards: ${context.codingStandards}` : '',
         context.architectureRules ? `Architecture Rules: ${context.architectureRules}` : ''

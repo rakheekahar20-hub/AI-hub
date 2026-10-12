@@ -32,7 +32,7 @@ export class AnthropicProvider implements AIProvider {
           messages: [
             {
               role: 'user',
-              content: `Create plan for: ${context.prompt}\nTech Stack: ${context.technologyStack}`
+              content: `Create plan for: ${context.prompt}\nAgent Role: ${context.agentRole || 'Developer'}\nTech Stack: ${context.technologyStack || 'TypeScript/Node.js'}\nStrictly confine planning to this role and tech stack. Do not plan modifications to unrelated files.`
             }
           ]
         })
@@ -68,7 +68,7 @@ export class AnthropicProvider implements AIProvider {
           messages: [
             {
               role: 'user',
-              content: `Implement changes for plan: ${JSON.stringify(plan)}\nPrompt: ${context.prompt}`
+              content: `Implement changes for plan: ${JSON.stringify(plan)}\nAgent Role: ${context.agentRole || 'Developer'}\nTech Stack: ${context.technologyStack || 'TypeScript, React'}\nStrictly limit modifications to files within your authorized role and tech stack. Do not alter unrelated files or project architecture.\nPrompt: ${context.prompt}`
             }
           ]
         })

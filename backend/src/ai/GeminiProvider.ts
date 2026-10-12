@@ -145,7 +145,23 @@ export class GeminiProvider implements AIProvider {
     for (const modelToTry of this.getCandidateModels()) {
       try {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelToTry}:generateContent?key=${this.apiKey}`;
-        const systemPrompt = `${context.systemInstructions}\nGenerate a JSON plan matching: { "summary": string, "steps": [{ "stepNumber": number, "title": string, "description": string, "filesToModify": string[] }], "riskAssessment": "low"|"medium"|"high", "estimatedFilesCount": number }`;
+        const roleConstraint = context.agentRole
+          ? `STRICT AGENT ROLE: You are strictly acting as a "${context.agentRole}". Only formulate steps and modify files within the domain of a ${context.agentRole}.`
+          : '';
+        const techStackConstraint = context.technologyStack
+          ? `AUTHORIZED TECH STACK: ${context.technologyStack}. All implementation steps must strictly adhere to this technology stack.`
+          : '';
+        const architectureConstraint = context.architectureRules
+          ? `ARCHITECTURE RULES: ${context.architectureRules}`
+          : '';
+        const systemPrompt = [
+          context.systemInstructions || 'You are an autonomous AI coding agent.',
+          roleConstraint,
+          techStackConstraint,
+          architectureConstraint,
+          'STRICT SCOPE CONSTRAINT: Never plan modifications to unrelated project files or alter global directory structure.',
+          'Generate a JSON plan matching: { "summary": string, "steps": [{ "stepNumber": number, "title": string, "description": string, "filesToModify": string[] }], "riskAssessment": "low"|"medium"|"high", "estimatedFilesCount": number }'
+        ].filter(Boolean).join('\n\n');
 
         const response = await fetch(url, {
           method: 'POST',
@@ -154,7 +170,7 @@ export class GeminiProvider implements AIProvider {
             contents: [
               {
                 role: 'user',
-                parts: [{ text: `${systemPrompt}\n\nTask: ${context.prompt}\nTech Stack: ${context.technologyStack}` }]
+                parts: [{ text: `${systemPrompt}\n\nTask: ${context.prompt}\nTech Stack: ${context.technologyStack || 'TypeScript, Node.js'}` }]
               }
             ],
             generationConfig: { responseMimeType: 'application/json' }
@@ -181,7 +197,19 @@ export class GeminiProvider implements AIProvider {
     for (const modelToTry of this.getCandidateModels()) {
       try {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelToTry}:generateContent?key=${this.apiKey}`;
-        const prompt = `Based on plan: ${JSON.stringify(plan)}\nTech Stack: ${context.technologyStack || 'TypeScript, React'}\n\nSTRICT CODING REQUIREMENTS:\n1. Only import libraries already installed in the project. Do NOT import uninstalled libraries (like class-variance-authority, clsx, etc.) unless instructed to install them.\n2. In React projects with JSX transform, do NOT write unused "import React from 'react'" if React is not explicitly called as React.something, to prevent TS6133 unused errors under strict noUnusedLocals.\n3. Ensure all exported components and props compile cleanly with TypeScript.\n\nProduce JSON matching: { "fileChanges": [{ "filePath": string, "changeType": "modified"|"added"|"deleted", "diff": string, "originalContent": string, "modifiedContent": string, "additions": number, "deletions": number }] }`;
+        const prompt = [
+          `Based on plan: ${JSON.stringify(plan)}`,
+          context.agentRole ? `AGENT ROLE: ${context.agentRole}` : '',
+          context.technologyStack ? `AUTHORIZED TECH STACK: ${context.technologyStack}` : '',
+          context.architectureRules ? `ARCHITECTURE RULES: ${context.architectureRules}` : '',
+          `\nSTRICT CODING & SCOPE REQUIREMENTS:`,
+          `1. STRICT ROLE & TECH BOUNDARIES: You are strictly operating as a "${context.agentRole || 'Developer'}". Work ONLY within your designated role and authorized technology stack (${context.technologyStack || 'project stack'}).`,
+          `2. STRICT FILE INTEGRITY: DO NOT alter unrelated files, configurations, or overall project directory structure. Keep changes strictly scoped to files necessary for the prompt.`,
+          `3. Only import libraries already installed in the project. Do NOT import uninstalled libraries (like class-variance-authority, clsx, etc.) unless instructed to install them.`,
+          `4. In React projects with JSX transform, do NOT write unused "import React from 'react'" if React is not explicitly called as React.something, to prevent TS6133 unused errors under strict noUnusedLocals.`,
+          `5. Ensure all exported components and props compile cleanly with TypeScript.`,
+          `\nProduce JSON matching: { "fileChanges": [{ "filePath": string, "changeType": "modified"|"added"|"deleted", "diff": string, "originalContent": string, "modifiedContent": string, "additions": number, "deletions": number }] }`
+        ].filter(Boolean).join('\n');
 
         const response = await fetch(url, {
           method: 'POST',
@@ -218,6 +246,7 @@ export class GeminiProvider implements AIProvider {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelToTry}:generateContent?key=${this.apiKey}`;
         const systemPrompt = [
           context.systemInstructions || 'You are an expert AI software engineer assistant.',
+          context.agentRole ? `Your Role: ${context.agentRole}. You must strictly operate within the boundaries and expertise of a ${context.agentRole}.` : '',
           context.technologyStack ? `Technology Stack: ${context.technologyStack}` : '',
           context.codingStandards ? `Coding Standards: ${context.codingStandards}` : '',
           context.architectureRules ? `Architecture Rules: ${context.architectureRules}` : '',

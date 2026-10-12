@@ -416,6 +416,7 @@ export async function handleChat(req: AuthenticatedRequest, res: Response) {
       prompt: trimmedPrompt,
       systemInstructions: agent.instruction?.systemInstructions || `You are ${agent.name}, an expert AI software engineer. Answer user questions conversationally, inspect screenshots and images when provided, write clean code, and discuss architecture.`,
       technologyStack: agent.instruction?.technologyStack,
+      agentRole: agent.agentType,
       codingStandards: agent.instruction?.codingStandards,
       architectureRules: agent.instruction?.architectureRules,
       projectKnowledge: agent.instruction?.projectKnowledge,

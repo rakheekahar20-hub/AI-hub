@@ -35,6 +35,7 @@ export interface AIProviderContext {
   systemInstructions: string;
   projectKnowledge?: string;
   technologyStack?: string;
+  agentRole?: string;
   businessRules?: string;
   codingStandards?: string;
   architectureRules?: string;
