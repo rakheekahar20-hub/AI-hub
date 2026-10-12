@@ -513,7 +513,7 @@ export class ExecutionEngine extends EventEmitter {
       await this.addLog(executionId, 'info', 'Build Runner', `Running build verification command: ${testConfig.buildCommand}`);
       options.onProgress?.(`🔨 [Step 7: Verification] Executing build command: ${testConfig.buildCommand}...\n`);
 
-      const buildRes = await TerminalExecutionService.execute(testConfig.buildCommand, {
+      let buildRes = await TerminalExecutionService.execute(testConfig.buildCommand, {
         cwd: workspaceRoot,
         timeout: 90000
       });
@@ -521,6 +521,59 @@ export class ExecutionEngine extends EventEmitter {
       buildStdout = buildRes.stdout;
       buildStderr = buildRes.stderr;
       buildSuccess = buildRes.success;
+
+      // AUTONOMOUS SELF-HEALING & SAFE FIX ATTEMPT
+      if (!buildSuccess) {
+        await this.addLog(executionId, 'warn', 'Build Runner', `Build failed with exit code ${buildRes.exitCode}. Analyzing errors for automatic fix...`);
+        options.onProgress?.(`⚠️ Build failure detected. Analyzing errors for automatic safe fix...\n`);
+
+        const errorOutput = buildStderr || buildStdout;
+        let fixAttempted = false;
+
+        // Case 1: Missing packages (Cannot find module 'xyz')
+        const missingModuleMatches = Array.from(errorOutput.matchAll(/Cannot find module ['"]([^'"/]+)['"]/g));
+        if (missingModuleMatches.length > 0) {
+          const missingPkgs = Array.from(new Set(missingModuleMatches.map(m => m[1])));
+          for (const pkg of missingPkgs) {
+            await this.addLog(executionId, 'info', 'Build Runner', `Auto-installing missing dependency: ${pkg}`);
+            options.onProgress?.(`📦 Installing missing dependency: ${pkg}...\n`);
+            await TerminalExecutionService.execute(`npm install ${pkg}`, { cwd: workspaceRoot, timeout: 60000 });
+            fixAttempted = true;
+          }
+        }
+
+        // Case 2: Unused React or unused variable TS6133 errors under strict noUnusedLocals
+        const unusedMatches = Array.from(errorOutput.matchAll(/([^\n:]+\.tsx?):\d+:\d+ - error TS6133: ['"]([^'"]+)['"] is declared but its value is never read/g));
+        if (unusedMatches.length > 0) {
+          for (const match of unusedMatches) {
+            const relFilePath = match[1].trim();
+            const unusedVar = match[2].trim();
+            const fullTarget = path.isAbsolute(relFilePath) ? relFilePath : path.join(workspaceRoot, relFilePath);
+            if (fs.existsSync(fullTarget)) {
+              let code = fs.readFileSync(fullTarget, 'utf8');
+              if (unusedVar === 'React') {
+                code = code.replace(/^import\s+React\s+from\s+['"]react['"];?\r?\n?/m, '');
+                code = code.replace(/^import\s+\*\s+as\s+React\s+from\s+['"]react['"];?\r?\n?/m, '');
+                fs.writeFileSync(fullTarget, code, 'utf8');
+                fixAttempted = true;
+                await this.addLog(executionId, 'info', 'Build Runner', `Auto-removed unused React import from ${relFilePath}`);
+              }
+            }
+          }
+        }
+
+        // Rerun build if fix was attempted
+        if (fixAttempted) {
+          options.onProgress?.(`🔄 Rerunning build verification command after auto-fix...\n`);
+          buildRes = await TerminalExecutionService.execute(testConfig.buildCommand, {
+            cwd: workspaceRoot,
+            timeout: 90000
+          });
+          buildStdout = buildRes.stdout;
+          buildStderr = buildRes.stderr;
+          buildSuccess = buildRes.success;
+        }
+      }
 
       if (buildSuccess) {
         await this.addLog(executionId, 'success', 'Build Runner', `Build compilation succeeded (0 errors).`, buildStdout.slice(-800));
@@ -531,24 +584,38 @@ export class ExecutionEngine extends EventEmitter {
       }
     }
 
-    // Run test command if configured
+    // Run test command if configured and package.json has a test script
     let testStdout = '';
     let testStderr = '';
 
-    if (hasPkg && testConfig.testCommand && testConfig.testCommand !== 'none') {
-      await this.addLog(executionId, 'info', 'Test Runner', `Running automated test suite: ${testConfig.testCommand}`);
-      const testRes = await TerminalExecutionService.execute(testConfig.testCommand, {
-        cwd: workspaceRoot,
-        timeout: 60000
-      });
-      testStdout = testRes.stdout;
-      testStderr = testRes.stderr;
+    let hasTestScript = false;
+    if (hasPkg) {
+      try {
+        const pkgData = JSON.parse(fs.readFileSync(path.join(workspaceRoot, 'package.json'), 'utf8'));
+        hasTestScript = Boolean(pkgData.scripts?.test);
+      } catch {}
+    }
 
-      if (testRes.success) {
-        await this.addLog(executionId, 'success', 'Test Runner', `Tests passed.`, testStdout.slice(-500));
-        options.onProgress?.(`✔ Tests passed successfully.\n`);
+    if (hasPkg && testConfig.testCommand && testConfig.testCommand !== 'none') {
+      const isDefaultNpmTest = testConfig.testCommand.trim() === 'npm test' || testConfig.testCommand.trim() === 'npm run test';
+      if (isDefaultNpmTest && !hasTestScript) {
+        await this.addLog(executionId, 'info', 'Test Runner', 'No automated test script configured in package.json (skipped).');
+        options.onProgress?.(`ℹ️ [Step 7: Tests] Skipped (No test script defined in package.json).\n`);
       } else {
-        await this.addLog(executionId, 'warn', 'Test Runner', `Tests notice: ${testStderr || testStdout}`);
+        await this.addLog(executionId, 'info', 'Test Runner', `Running automated test suite: ${testConfig.testCommand}`);
+        const testRes = await TerminalExecutionService.execute(testConfig.testCommand, {
+          cwd: workspaceRoot,
+          timeout: 60000
+        });
+        testStdout = testRes.stdout;
+        testStderr = testRes.stderr;
+
+        if (testRes.success) {
+          await this.addLog(executionId, 'success', 'Test Runner', `Tests passed.`, testStdout.slice(-500));
+          options.onProgress?.(`✔ Tests passed successfully.\n`);
+        } else {
+          await this.addLog(executionId, 'warn', 'Test Runner', `Tests notice: ${testStderr || testStdout}`);
+        }
       }
     }
 

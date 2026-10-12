@@ -181,7 +181,7 @@ export class GeminiProvider implements AIProvider {
     for (const modelToTry of this.getCandidateModels()) {
       try {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelToTry}:generateContent?key=${this.apiKey}`;
-        const prompt = `Based on plan: ${JSON.stringify(plan)}\nProduce JSON matching: { "fileChanges": [{ "filePath": string, "changeType": "modified"|"added"|"deleted", "diff": string, "originalContent": string, "modifiedContent": string, "additions": number, "deletions": number }] }`;
+        const prompt = `Based on plan: ${JSON.stringify(plan)}\nTech Stack: ${context.technologyStack || 'TypeScript, React'}\n\nSTRICT CODING REQUIREMENTS:\n1. Only import libraries already installed in the project. Do NOT import uninstalled libraries (like class-variance-authority, clsx, etc.) unless instructed to install them.\n2. In React projects with JSX transform, do NOT write unused "import React from 'react'" if React is not explicitly called as React.something, to prevent TS6133 unused errors under strict noUnusedLocals.\n3. Ensure all exported components and props compile cleanly with TypeScript.\n\nProduce JSON matching: { "fileChanges": [{ "filePath": string, "changeType": "modified"|"added"|"deleted", "diff": string, "originalContent": string, "modifiedContent": string, "additions": number, "deletions": number }] }`;
 
         const response = await fetch(url, {
           method: 'POST',
