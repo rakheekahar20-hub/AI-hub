@@ -1,6 +1,7 @@
 import { prisma } from '../database/db.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { TerminalExecutionService } from '../execution/TerminalExecutionService.js';
 
 export interface GitHubUser {
   login: string;
@@ -94,9 +95,47 @@ export class GitHubMCPService {
         scopes
       };
     } catch (err: any) {
+      // Fallback via curl if fetch encounters network/DNS issue
+      try {
+        const curlRes = await TerminalExecutionService.execute(
+          `curl -s -w "\\n%{http_code}" -H "Authorization: Bearer ${token.trim()}" -H "Accept: application/vnd.github.v3+json" -H "User-Agent: AI-Hub-Agent-Platform" https://api.github.com/user`,
+          { timeout: 15000 }
+        );
+        if (curlRes.stdout) {
+          const lines = curlRes.stdout.trim().split('\n');
+          const statusStr = lines[lines.length - 1];
+          const statusCode = parseInt(statusStr, 10);
+          const bodyStr = lines.slice(0, -1).join('\n');
+
+          if (statusCode === 200 && bodyStr) {
+            const data = JSON.parse(bodyStr);
+            return {
+              valid: true,
+              user: {
+                login: data.login,
+                name: data.name || data.login,
+                avatarUrl: data.avatar_url,
+                htmlUrl: data.html_url
+              },
+              scopes: 'repo,read:user'
+            };
+          } else if (statusCode === 401) {
+            return {
+              valid: false,
+              error: 'Authentication failed (HTTP 401): Invalid or expired GitHub Personal Access Token or OAuth token.'
+            };
+          } else if (statusCode === 403) {
+            return {
+              valid: false,
+              error: 'Authentication failed (HTTP 403): Token lacks required permissions or rate limit exceeded.'
+            };
+          }
+        }
+      } catch {}
+
       return {
         valid: false,
-        error: `Could not reach GitHub API: ${err.message || 'Network timeout or unreachable host'}`
+        error: `Could not reach GitHub API: ${err.message || 'Network timeout or unreachable host'}. Please verify internet access.`
       };
     }
   }

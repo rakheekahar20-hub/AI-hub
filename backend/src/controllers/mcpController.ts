@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { AuthenticatedRequest } from '../middleware/auth.js';
 import { GitHubMCPService } from '../mcp/GitHubMCPService.js';
+import { prisma } from '../database/db.js';
 
 export async function getGitHubMCPStatus(req: AuthenticatedRequest, res: Response) {
   try {
@@ -17,7 +18,15 @@ export async function connectGitHubMCP(req: AuthenticatedRequest, res: Response)
     const { id: agentId } = req.params;
     const { serverUrl, authMethod, apiKey, scopes } = req.body;
 
-    if (!apiKey || !apiKey.trim()) {
+    let effectiveApiKey = apiKey?.trim();
+    if (!effectiveApiKey && agentId) {
+      const existing = await prisma.agentMCPConfig.findUnique({ where: { agentId } });
+      if (existing?.apiKey) {
+        effectiveApiKey = existing.apiKey;
+      }
+    }
+
+    if (!effectiveApiKey) {
       return res.status(400).json({
         error: 'GitHub Personal Access Token (PAT) or OAuth token is required for authentication.'
       });
@@ -26,7 +35,7 @@ export async function connectGitHubMCP(req: AuthenticatedRequest, res: Response)
     const result = await GitHubMCPService.connect(agentId, {
       serverUrl: serverUrl || 'npx -y @modelcontextprotocol/server-github',
       authMethod: authMethod || 'pat',
-      apiKey: apiKey.trim(),
+      apiKey: effectiveApiKey,
       scopes: scopes || 'repo,read:user'
     });
 
@@ -43,8 +52,17 @@ export async function connectGitHubMCP(req: AuthenticatedRequest, res: Response)
 export async function testGitHubMCPConnection(req: AuthenticatedRequest, res: Response) {
   try {
     const { serverUrl, authMethod, apiKey, scopes } = req.body;
+    const agentId = req.params.id;
 
-    if (!apiKey || !apiKey.trim()) {
+    let effectiveApiKey = apiKey?.trim();
+    if (!effectiveApiKey && agentId) {
+      const existing = await prisma.agentMCPConfig.findUnique({ where: { agentId } });
+      if (existing?.apiKey) {
+        effectiveApiKey = existing.apiKey;
+      }
+    }
+
+    if (!effectiveApiKey) {
       return res.status(400).json({
         success: false,
         message: 'Please provide a GitHub Personal Access Token or OAuth token to test.'
@@ -54,7 +72,7 @@ export async function testGitHubMCPConnection(req: AuthenticatedRequest, res: Re
     const result = await GitHubMCPService.testConnection({
       serverUrl: serverUrl || 'npx -y @modelcontextprotocol/server-github',
       authMethod: authMethod || 'pat',
-      apiKey: apiKey.trim(),
+      apiKey: effectiveApiKey,
       scopes: scopes || 'repo,read:user'
     });
 

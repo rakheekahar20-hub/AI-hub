@@ -228,7 +228,7 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({
   };
 
   const handleConnectMCP = async () => {
-    if (!mcpApiKey.trim()) {
+    if (!mcpApiKey.trim() && !agent?.mcpConfig?.apiKeyMasked) {
       setMcpErrorMessage('Please enter a GitHub Personal Access Token or OAuth token.');
       return;
     }
@@ -266,7 +266,7 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({
   };
 
   const handleTestMCP = async () => {
-    if (!mcpApiKey.trim()) {
+    if (!mcpApiKey.trim() && !agent?.mcpConfig?.apiKeyMasked) {
       setMcpErrorMessage('Please enter a GitHub token to test connection.');
       return;
     }
